@@ -690,6 +690,36 @@ class PDFFormViewModel {
         }
     }
     
+    /// Exports the document in its editable form for sharing.
+    ///
+    /// Always writes to a fresh temp URL so the system share sheet can read the
+    /// file regardless of where the host app's save handler would normally put it.
+    /// Does not modify currentDocumentURL / lastSavedURL.
+    func exportEditablePDF() -> URL? {
+        guard let document = pdfDocument else {
+            exportStatus = "Failed to export PDF"
+            return nil
+        }
+
+        pdfView?.writeOverlayMetadata()
+
+        let fileName = defaultFileName(for: .editable)
+        let tempURL = stagingURL(fileName: fileName)
+        try? FileManager.default.createDirectory(
+            at: tempURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true,
+            attributes: nil
+        )
+
+        guard document.write(to: tempURL) else {
+            exportStatus = "Failed to export PDF"
+            return nil
+        }
+        patchNeedAppearances(at: tempURL)
+        exportStatus = "Ready to share"
+        return tempURL
+    }
+
     func exportFlattenedPDF() -> URL? {
         guard let document = pdfDocument else {
             exportStatus = "No overlays to export"
