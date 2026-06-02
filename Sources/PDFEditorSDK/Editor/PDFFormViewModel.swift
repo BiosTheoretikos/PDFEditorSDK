@@ -610,6 +610,11 @@ class PDFFormViewModel {
         defer { pdfView?.endApplyingFormUndoRedo() }
         annotation.widgetStringValue = value
         annotation.setValue(value as Any, forAnnotationKey: .widgetValue)
+        // Keep /AS in sync for button widgets so PDF renderers select the correct
+        // appearance stream when the document is written or flattened.
+        if annotation.widgetFieldType == .button {
+            annotation.setValue(value as Any, forAnnotationKey: PDFAnnotationKey(rawValue: "/AS"))
+        }
         pdfView?.syncFormFieldBaseline(for: annotation)
         pdfView?.refreshFormWidgetAppearance(for: annotation)
         pdfView?.refreshAllFormWidgetAppearances()
@@ -923,6 +928,28 @@ class PDFFormViewModel {
                                 lineWidth: item.lineWidth,
                                 context: cg
                             )
+                        case .doubleArrow:
+                            let points = overlayLineEndpoints(
+                                in: rect,
+                                kind: kind,
+                                lineWidth: item.lineWidth,
+                                flippedH: item.lineFlippedH ?? false,
+                                flippedV: item.lineFlippedV ?? false
+                            )
+                            cg.move(to: points.start)
+                            cg.addLine(to: points.end)
+                            addArrowhead(
+                                from: points.start,
+                                to: points.end,
+                                lineWidth: item.lineWidth,
+                                context: cg
+                            )
+                            addArrowhead(
+                                from: points.end,
+                                to: points.start,
+                                lineWidth: item.lineWidth,
+                                context: cg
+                            )
                         }
                         cg.strokePath()
                         cg.restoreGState()
@@ -947,8 +974,35 @@ class PDFFormViewModel {
     /// the field interior first so any stale appearance-stream content is erased.
     private func renderFormFieldOverlay(for page: PDFPage, in context: CGContext) {
         for annotation in page.annotations {
-            // Only process text-input and choice (dropdown) fields.
             let fieldType = annotation.widgetFieldType
+
+            // Button widgets (checkboxes / radio buttons): re-draw the checked state
+            // directly so the correct appearance is captured even if the PDF's /AP
+            // appearance stream has not been regenerated since the value changed.
+            if fieldType == .button {
+                let ct = annotation.widgetControlType
+                guard ct == .checkBoxControl || ct == .radioButtonControl else { continue }
+                let value = annotation.widgetStringValue ?? "Off"
+                guard value != "Off", !value.isEmpty else { continue }
+                let bounds = annotation.bounds
+                guard bounds.width > 1, bounds.height > 1 else { continue }
+                // Draw a checkmark glyph scaled to the field bounds.
+                let symbol = ct == .radioButtonControl ? "•" : "✓"
+                let fontSize = min(bounds.width, bounds.height) * 0.75
+                drawText(
+                    symbol,
+                    in: bounds,
+                    fontSize: fontSize,
+                    isBold: false,
+                    textColor: .black,
+                    textAlignment: .center,
+                    verticalAlignment: .middle,
+                    context: context
+                )
+                continue
+            }
+
+            // Only process text-input and choice (dropdown) fields below.
             guard fieldType == .text || fieldType == .choice else { continue }
             guard let text = annotation.widgetStringValue, !text.isEmpty else { continue }
 

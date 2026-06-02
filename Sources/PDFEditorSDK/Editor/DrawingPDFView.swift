@@ -649,19 +649,24 @@ class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, PencilDraw
             guard annotation.bounds.contains(pagePoint) else { continue }
             let wt = annotation.widgetFieldType
             if wt == .button {
-                // Toggle checkbox state
-                let currentValue = annotation.widgetStringValue ?? "Off"
-                if currentValue == "Off" || currentValue.isEmpty {
-                    annotation.setValue("Yes", forAnnotationKey: .widgetValue)
-                } else {
-                    annotation.setValue("Off", forAnnotationKey: .widgetValue)
-                }
-                // Force redraw
-                annotation.page?.annotations.forEach { _ in }
+                let ct = annotation.widgetControlType
+                guard ct == .checkBoxControl || ct == .radioButtonControl else { continue }
+                let previousValue = annotation.widgetStringValue ?? "Off"
+                let newValue = (previousValue == "Off" || previousValue.isEmpty) ? "Yes" : "Off"
+                applyCheckboxToggle(annotation: annotation, value: newValue)
+                formViewModel?.didMakeChange(.formFieldChange(annotation: annotation, previousValue: previousValue, newValue: newValue))
                 setNeedsDisplay()
                 return
             }
         }
+    }
+
+    /// Sets both the widget value (/V) and appearance state (/AS) for a button widget so
+    /// PDF renderers — including backend flatteners — select the correct appearance stream.
+    func applyCheckboxToggle(annotation: PDFAnnotation, value: String) {
+        annotation.widgetStringValue = value
+        annotation.setValue(value, forAnnotationKey: .widgetValue)
+        annotation.setValue(value, forAnnotationKey: PDFAnnotationKey(rawValue: "/AS"))
     }
 
     private func setupPencilTextTapGesture() {
@@ -917,6 +922,23 @@ class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, PencilDraw
               let formViewModel else { return }
         let pageIndex = document.index(for: page)
         guard pageIndex >= 0, pageIndex < document.pageCount else { return }
+
+        // Checkboxes and radio buttons are toggled natively by PDFKit on finger tap.
+        // Capture the undo record now (PDFKit has already updated the value by this point)
+        // and ensure /AS is kept in sync. Push buttons (signature fields) still use the
+        // image-picker flow.
+        let ct = annotation.widgetControlType
+        if ct == .checkBoxControl || ct == .radioButtonControl {
+            let currentValue = annotation.widgetStringValue ?? "Off"
+            // PDFKit toggled the value before firing PDFAnnotationHit; the previous value
+            // is the logical inverse.
+            let previousValue = (currentValue == "Off" || currentValue.isEmpty) ? "Yes" : "Off"
+            // Sync /AS so downstream PDF renderers pick the right appearance stream.
+            annotation.setValue(currentValue, forAnnotationKey: PDFAnnotationKey(rawValue: "/AS"))
+            formViewModel.didMakeChange(.formFieldChange(annotation: annotation, previousValue: previousValue, newValue: currentValue))
+            return
+        }
+
         formViewModel.presentFormWidgetImageSourceChoice(pageIndex: pageIndex, annotation: annotation)
     }
     
@@ -1462,7 +1484,7 @@ class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, PencilDraw
             shapePreviewLayer.isHidden = true
             let rawEnd = viewPoint
             shapeStartPoint = nil
-            let isLineLike = currentShapeKind == .line || currentShapeKind == .arrow
+            let isLineLike = currentShapeKind == .line || currentShapeKind == .arrow || currentShapeKind == .doubleArrow
             let dragLen = hypot(rawEnd.x - start.x, rawEnd.y - start.y)
             let framePadding = isLineLike ? ShapeBoxView.lineDrawingInset(for: currentShapeKind, lineWidth: shapeLineWidth) : 2
             let rectInView = rectFrom(start, to: rawEnd).insetBy(dx: -framePadding, dy: -framePadding)
@@ -1496,6 +1518,8 @@ class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, PencilDraw
             shapePreviewLayer.path = path.cgPath
         case .arrow:
             shapePreviewLayer.path = arrowPreviewPath(from: start, to: end).cgPath
+        case .doubleArrow:
+            shapePreviewLayer.path = doubleArrowPreviewPath(from: start, to: end).cgPath
         }
     }
 
@@ -1518,10 +1542,27 @@ class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, PencilDraw
         return path
     }
 
+    private func doubleArrowPreviewPath(from start: CGPoint, to end: CGPoint) -> UIBezierPath {
+        let path = arrowPreviewPath(from: start, to: end)
+        let dx = end.x - start.x
+        let dy = end.y - start.y
+        let len = hypot(dx, dy)
+        guard len > 1 else { return path }
+        let backAngle = atan2(dy, dx) + .pi
+        let headLen: CGFloat = 20
+        let headAngle: CGFloat = .pi / 6
+        path.move(to: CGPoint(x: start.x - headLen * cos(backAngle - headAngle),
+                              y: start.y - headLen * sin(backAngle - headAngle)))
+        path.addLine(to: start)
+        path.addLine(to: CGPoint(x: start.x - headLen * cos(backAngle + headAngle),
+                                 y: start.y - headLen * sin(backAngle + headAngle)))
+        return path
+    }
+
     private func createOverlayShape(with rectInView: CGRect, startPoint: CGPoint, endPoint: CGPoint) {
         guard let docView = documentView else { return }
         let rectInDoc = convert(rectInView, to: docView)
-        let isLineLike = currentShapeKind == .line || currentShapeKind == .arrow
+        let isLineLike = currentShapeKind == .line || currentShapeKind == .arrow || currentShapeKind == .doubleArrow
         let minDim: CGFloat = isLineLike ? 5 : 30
         let normalised = CGRect(
             origin: rectInDoc.origin,

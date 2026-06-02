@@ -838,7 +838,7 @@ final class ShapeBoxView: UIView {
     private var startLineFlippedH: Bool = false
     private var startLineFlippedV: Bool = false
 
-    private var isLineKind: Bool { shapeKind == .line || shapeKind == .arrow }
+    private var isLineKind: Bool { shapeKind == .line || shapeKind == .arrow || shapeKind == .doubleArrow }
     private var lineDrawingInset: CGFloat {
         Self.lineDrawingInset(for: shapeKind, lineWidth: lineWidth)
     }
@@ -1026,7 +1026,7 @@ final class ShapeBoxView: UIView {
             path.addLine(to: CGPoint(x: r.minX,  y: r.maxY))
             path.close()
             return path
-        case .line, .arrow:
+        case .line, .arrow, .doubleArrow:
             let path = UIBezierPath()
             path.move(to: lineStartInBounds)
             path.addLine(to: lineEndInBounds)
@@ -1053,7 +1053,7 @@ final class ShapeBoxView: UIView {
         path.move(to: start)
         path.addLine(to: end)
 
-        guard shapeKind == .arrow else { return path }
+        guard shapeKind == .arrow || shapeKind == .doubleArrow else { return path }
 
         let dx = end.x - start.x
         let dy = end.y - start.y
@@ -1075,6 +1075,22 @@ final class ShapeBoxView: UIView {
         path.move(to: firstPoint)
         path.addLine(to: end)
         path.addLine(to: secondPoint)
+
+        if shapeKind == .doubleArrow {
+            let backAngle = angle + .pi
+            let thirdPoint = CGPoint(
+                x: start.x - headLength * cos(backAngle - headAngle),
+                y: start.y - headLength * sin(backAngle - headAngle)
+            )
+            let fourthPoint = CGPoint(
+                x: start.x - headLength * cos(backAngle + headAngle),
+                y: start.y - headLength * sin(backAngle + headAngle)
+            )
+            path.move(to: thirdPoint)
+            path.addLine(to: start)
+            path.addLine(to: fourthPoint)
+        }
+
         return path
     }
 
@@ -1111,15 +1127,24 @@ final class ShapeBoxView: UIView {
         case .arrow:
             let start = lineStartInBounds
             let end   = lineEndInBounds
-            // Main shaft
             let shaft = UIBezierPath()
             shaft.move(to: start)
             shaft.addLine(to: end)
             shaft.lineWidth = lineWidth
             shaft.lineCapStyle = .round
             shaft.stroke()
-            // Arrowhead
             drawArrowhead(from: start, to: end)
+        case .doubleArrow:
+            let start = lineStartInBounds
+            let end   = lineEndInBounds
+            let shaft = UIBezierPath()
+            shaft.move(to: start)
+            shaft.addLine(to: end)
+            shaft.lineWidth = lineWidth
+            shaft.lineCapStyle = .round
+            shaft.stroke()
+            drawArrowhead(from: start, to: end)
+            drawArrowhead(from: end, to: start)
         }
     }
 
@@ -1181,9 +1206,9 @@ final class ShapeBoxView: UIView {
     }
 
     static func lineDrawingInset(for kind: OverlayShapeKind, lineWidth: CGFloat) -> CGFloat {
-        guard kind == .line || kind == .arrow else { return 0 }
+        guard kind == .line || kind == .arrow || kind == .doubleArrow else { return 0 }
         let strokeInset = max(lineWidth / 2, 1)
-        guard kind == .arrow else { return strokeInset }
+        guard kind == .arrow || kind == .doubleArrow else { return strokeInset }
         let arrowHeadInset = max(lineWidth * 5, 18) * 0.5 + strokeInset
         return max(strokeInset, arrowHeadInset)
     }

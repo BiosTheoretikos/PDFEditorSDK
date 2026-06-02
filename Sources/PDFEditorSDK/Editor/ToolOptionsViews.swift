@@ -724,18 +724,20 @@ private struct ShapeKindButton: View {
         case .circle:    return "circle"
         case .rectangle: return "rectangle"
         case .triangle:  return "triangle"
-        case .line:      return "line.diagonal"
-        case .arrow:     return "arrow.up.right"
+        case .line:        return "line.diagonal"
+        case .arrow:       return "arrow.up.right"
+        case .doubleArrow: return "arrow.left.and.right"
         }
     }
 
     private var label: String {
         switch kind {
-        case .circle:    return "Circle"
-        case .rectangle: return "Rect"
-        case .triangle:  return "Triangle"
-        case .line:      return "Line"
-        case .arrow:     return "Arrow"
+        case .circle:      return "Circle"
+        case .rectangle:   return "Rect"
+        case .triangle:    return "Triangle"
+        case .line:        return "Line"
+        case .arrow:       return "Arrow"
+        case .doubleArrow: return "2-Arrow"
         }
     }
 }

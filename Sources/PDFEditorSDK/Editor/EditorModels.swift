@@ -42,6 +42,7 @@ enum OverlayShapeKind: String, Codable {
     case triangle
     case line
     case arrow
+    case doubleArrow
 }
 
 enum TextVerticalAlignment: String, Codable {

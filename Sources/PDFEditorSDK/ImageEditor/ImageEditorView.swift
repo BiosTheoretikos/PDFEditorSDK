@@ -476,6 +476,7 @@ struct ImageFormEditorView: View {
         case .triangle: return "triangle"
         case .line: return "line.diagonal"
         case .arrow: return "arrow.up.right"
+        case .doubleArrow: return "arrow.left.and.right"
         }
     }
 
@@ -486,6 +487,7 @@ struct ImageFormEditorView: View {
         case .triangle: return "triangle.fill"
         case .line: return "line.diagonal"
         case .arrow: return "arrow.up.right"
+        case .doubleArrow: return "arrow.left.and.right"
         }
     }
 
@@ -496,6 +498,7 @@ struct ImageFormEditorView: View {
         case .triangle: return "Tri"
         case .line: return "Line"
         case .arrow: return "Arrow"
+        case .doubleArrow: return "2-Arrow"
         }
     }
 
@@ -1041,6 +1044,14 @@ struct ImageFormEditorView: View {
             Button { viewModel.activeShapeKind = .arrow } label: {
                 selectEditToolbarChip("Arrow", isActive: viewModel.activeShapeKind == .arrow) {
                     Image(systemName: iconName(for: .arrow)).fontWeight(.semibold)
+                }
+                .foregroundStyle(Color.accentColor)
+            }
+            .buttonStyle(.plain)
+
+            Button { viewModel.activeShapeKind = .doubleArrow } label: {
+                selectEditToolbarChip("2-Arrow", isActive: viewModel.activeShapeKind == .doubleArrow) {
+                    Image(systemName: iconName(for: .doubleArrow)).fontWeight(.semibold)
                 }
                 .foregroundStyle(Color.accentColor)
             }
@@ -2315,7 +2326,7 @@ class DrawingImageView: UIView, PencilDrawingGestureDelegate {
             shapePreviewLayer.isHidden = true
             let rawEnd = viewPoint
             shapeStartPoint = nil
-            let isLineLike = currentShapeKind == .line || currentShapeKind == .arrow
+            let isLineLike = currentShapeKind == .line || currentShapeKind == .arrow || currentShapeKind == .doubleArrow
             let dragLen = hypot(rawEnd.x - start.x, rawEnd.y - start.y)
             let framePadding = isLineLike ? ShapeBoxView.lineDrawingInset(for: currentShapeKind, lineWidth: shapeLineWidth) : 2
             let rectInView = rectFrom(start, to: rawEnd).insetBy(dx: -framePadding, dy: -framePadding)
@@ -2349,6 +2360,8 @@ class DrawingImageView: UIView, PencilDrawingGestureDelegate {
             shapePreviewLayer.path = path.cgPath
         case .arrow:
             shapePreviewLayer.path = arrowPreviewPath(from: start, to: end).cgPath
+        case .doubleArrow:
+            shapePreviewLayer.path = doubleArrowPreviewPath(from: start, to: end).cgPath
         }
     }
 
@@ -2371,8 +2384,25 @@ class DrawingImageView: UIView, PencilDrawingGestureDelegate {
         return path
     }
 
+    private func doubleArrowPreviewPath(from start: CGPoint, to end: CGPoint) -> UIBezierPath {
+        let path = arrowPreviewPath(from: start, to: end)
+        let dx = end.x - start.x
+        let dy = end.y - start.y
+        let len = hypot(dx, dy)
+        guard len > 1 else { return path }
+        let backAngle = atan2(dy, dx) + .pi
+        let headLen: CGFloat = 20
+        let headAngle: CGFloat = .pi / 6
+        path.move(to: CGPoint(x: start.x - headLen * cos(backAngle - headAngle),
+                              y: start.y - headLen * sin(backAngle - headAngle)))
+        path.addLine(to: start)
+        path.addLine(to: CGPoint(x: start.x - headLen * cos(backAngle + headAngle),
+                                 y: start.y - headLen * sin(backAngle + headAngle)))
+        return path
+    }
+
     private func createShapeBox(with rectInView: CGRect, startPoint: CGPoint, endPoint: CGPoint) {
-        let isLineLike = currentShapeKind == .line || currentShapeKind == .arrow
+        let isLineLike = currentShapeKind == .line || currentShapeKind == .arrow || currentShapeKind == .doubleArrow
         let minDim: CGFloat = isLineLike ? 5 : 30
         let normalised = CGRect(
             origin: rectInView.origin,

@@ -1183,6 +1183,14 @@ struct PDFFormEditorView: View {
             }
             .buttonStyle(.plain)
 
+            Button { viewModel.activeShapeKind = .doubleArrow } label: {
+                selectEditToolbarChip("2-Arrow", isActive: viewModel.activeShapeKind == .doubleArrow) {
+                    Image(systemName: iconName(for: .doubleArrow)).fontWeight(.semibold)
+                }
+                .foregroundStyle(Color.accentColor)
+            }
+            .buttonStyle(.plain)
+
             HStack(spacing: 6) {
                 Image(systemName: fillIconName(for: viewModel.activeShapeKind))
                     .fontWeight(.semibold)
@@ -1622,6 +1630,11 @@ struct PDFFormEditorView: View {
         } label: {
             Label("Arrow", systemImage: iconName(for: .arrow))
         }
+        Button {
+            viewModel.activeShapeKind = .doubleArrow
+        } label: {
+            Label("Double Arrow", systemImage: iconName(for: .doubleArrow))
+        }
     }
 
     private var textToolbarFontSizeControl: some View {
@@ -1704,6 +1717,7 @@ struct PDFFormEditorView: View {
         case .triangle: return "triangle"
         case .line: return "line.diagonal"
         case .arrow: return "arrow.up.right"
+        case .doubleArrow: return "arrow.left.and.right"
         }
     }
 
@@ -1714,6 +1728,7 @@ struct PDFFormEditorView: View {
         case .triangle: return "triangle.fill"
         case .line: return "line.diagonal"
         case .arrow: return "arrow.up.right"
+        case .doubleArrow: return "arrow.left.and.right"
         }
     }
 
@@ -1724,6 +1739,7 @@ struct PDFFormEditorView: View {
         case .triangle: return "Tri"
         case .line: return "Line"
         case .arrow: return "Arrow"
+        case .doubleArrow: return "2-Arrow"
         }
     }
 }
