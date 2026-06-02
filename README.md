@@ -36,11 +36,12 @@ targets: [
 
 ```
 Sources/PDFEditorSDK/
-├── PDFEditorSDK.swift                    — public entry points (PDFEditorView, ImageEditorView)
+├── PDFEditorSDK.swift                    — public entry points (PDFEditorView, ImageEditorView, static utilities)
 ├── Editor/
 │   ├── PDFEditorView.swift               — SwiftUI shell and toolbar
 │   ├── PDFFormViewModel.swift            — editing state, undo/redo, save/export logic
 │   ├── DrawingPDFView.swift              — UIKit PDF canvas with gesture handling
+│   ├── PDFOverlayRenderer.swift          — shared rendering engine for overlays (thumbnail + flatten)
 │   ├── EditorModels.swift                — shared enums and data types
 │   ├── EditorPreferences.swift           — UserDefaults persistence for tool settings
 │   ├── EditorSettingsView.swift          — input mode settings popover
@@ -259,6 +260,46 @@ PDFEditorView(
 
 ---
 
+## Static utilities
+
+`PDFEditorSDK` exposes two static methods that work directly on saved editable PDF files — no editor view required. Both are safe to call from a background thread.
+
+### `thumbnail(for:pageIndex:size:)`
+
+Generates a thumbnail `UIImage` for one page of an editable PDF, including all overlay content (shapes, text boxes, images, and ink drawings).
+
+A plain `PDFPage.draw()` call only renders native PDF annotations such as ink strokes. Shapes, text boxes, and images are stored as invisible metadata annotations inside the editable file and are invisible to any external renderer. This method decodes that metadata and draws the overlays on top, producing a correct thumbnail without needing the editor view.
+
+```swift
+// Replace your plain PDFPage.draw() thumbnail with this:
+let thumbnail = PDFEditorSDK.thumbnail(
+    for: editableURL,
+    pageIndex: 0,
+    size: CGSize(width: 120, height: 160)
+)
+```
+
+The `pageIndex` parameter defaults to `0` so you can omit it for single-page documents.
+
+---
+
+### `flattenedPDF(from:)`
+
+Produces a fully flattened PDF from an editable file. All overlays — shapes, text boxes, images, ink drawings, and filled form fields — are burned into the output as static PDF content. The resulting file can be opened in any PDF viewer without this SDK.
+
+```swift
+if let flatURL = PDFEditorSDK.flattenedPDF(from: editableURL) {
+    // flatURL is in FileManager.temporaryDirectory — move or copy it before the next call.
+    try FileManager.default.copyItem(at: flatURL, to: myDestinationURL)
+}
+```
+
+This is the recommended approach for uploading a PDF to a server or database. Keep the editable file locally for future editing; use the flattened output for distribution or storage.
+
+> **Note:** The returned URL points to a UUID-namespaced temporary file. It is not cleaned up automatically — copy or move it before calling `flattenedPDF(from:)` again, or before the process exits.
+
+---
+
 ## Image Editor
 
 ### What it does
@@ -340,6 +381,16 @@ ImageEditorView(imageData: imageData) { exportedImage in
 ---
 
 ## Changelog
+
+### v1.2.2
+
+- **`PDFEditorSDK.thumbnail(for:pageIndex:size:)`** — new static method that generates a correct thumbnail `UIImage` for any page of an editable PDF. Unlike a plain `PDFPage.draw()` call, it decodes the SDK's embedded overlay metadata and renders shapes, text boxes, and images on top of the page. Ink/draw annotations were already visible; this closes the gap for the other overlay types.
+
+- **`PDFEditorSDK.flattenedPDF(from:)`** — new static method that takes the URL of an editable PDF and returns a fully flattened copy in a temporary file. All overlays and form field values are burned in. Intended for upload and distribution workflows where you want to keep the editable file locally but push a static, universally readable copy to a server or database.
+
+- **Rendering engine extracted to `PDFOverlayRenderer`** — the internal drawing helpers (text, shapes, images, arrowheads, form field overlay) were consolidated into a shared `PDFOverlayRenderer` type. The live flattened export used by the editor toolbar now delegates to the same code path as the new static utilities, eliminating duplication and ensuring both paths stay in sync.
+
+---
 
 ### v2.1.0
 

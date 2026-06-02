@@ -453,8 +453,8 @@ class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, PencilDraw
     private var formPencilTapGesture: UITapGestureRecognizer?
     private var textBoxPanStartedOnExistingBox = false
     
-    private let overlayMetadataPrefix = "OVERLAY_META_V1:"
-    private let overlayMetadataPartPrefix = "OVERLAY_META_V1_PART:"
+    private let overlayMetadataPrefix     = PDFOverlayRenderer.overlayMetadataPrefix
+    private let overlayMetadataPartPrefix = PDFOverlayRenderer.overlayMetadataPartPrefix
     
     // Form field tracking
     private var formFieldStates: [String: String?] = [:]
@@ -667,6 +667,24 @@ class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, PencilDraw
         annotation.widgetStringValue = value
         annotation.setValue(value, forAnnotationKey: .widgetValue)
         annotation.setValue(value, forAnnotationKey: PDFAnnotationKey(rawValue: "/AS"))
+    }
+
+    /// Walks every page in the document and, for all button widgets sharing `fieldName`,
+    /// sets /AS to match the current /V (widgetStringValue).  Call this after PDFKit
+    /// has finished settling a radio-button group toggle so that all deselected siblings
+    /// have /AS = "Off" and the newly selected button has /AS = its export value.
+    func syncButtonGroupAppearanceStates(fieldName: String) {
+        guard let document else { return }
+        for i in 0..<document.pageCount {
+            guard let page = document.page(at: i) else { continue }
+            for annotation in page.annotations {
+                guard annotation.type == PDFAnnotationSubtype.widget.rawValue else { continue }
+                guard annotation.fieldName == fieldName else { continue }
+                guard annotation.widgetFieldType == .button else { continue }
+                let value = annotation.widgetStringValue ?? "Off"
+                annotation.setValue(value, forAnnotationKey: PDFAnnotationKey(rawValue: "/AS"))
+            }
+        }
     }
 
     private func setupPencilTextTapGesture() {
@@ -924,18 +942,28 @@ class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, PencilDraw
         guard pageIndex >= 0, pageIndex < document.pageCount else { return }
 
         // Checkboxes and radio buttons are toggled natively by PDFKit on finger tap.
-        // Capture the undo record now (PDFKit has already updated the value by this point)
-        // and ensure /AS is kept in sync. Push buttons (signature fields) still use the
-        // image-picker flow.
+        // Push buttons (signature fields) still use the image-picker flow.
         let ct = annotation.widgetControlType
         if ct == .checkBoxControl || ct == .radioButtonControl {
-            let currentValue = annotation.widgetStringValue ?? "Off"
-            // PDFKit toggled the value before firing PDFAnnotationHit; the previous value
-            // is the logical inverse.
-            let previousValue = (currentValue == "Off" || currentValue.isEmpty) ? "Yes" : "Off"
-            // Sync /AS so downstream PDF renderers pick the right appearance stream.
-            annotation.setValue(currentValue, forAnnotationKey: PDFAnnotationKey(rawValue: "/AS"))
-            formViewModel.didMakeChange(.formFieldChange(annotation: annotation, previousValue: previousValue, newValue: currentValue))
+            // PDFKit may still be settling group values at this point (especially for radio
+            // button groups where sibling annotations are deselected simultaneously).
+            // Defer /AS synchronisation so we read final settled values for every member
+            // of the group, not just the annotation that fired the hit notification.
+            let fieldName = annotation.fieldName
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                if let fn = fieldName {
+                    // Sync /AS for every button in this group (handles radio deselection).
+                    self.syncButtonGroupAppearanceStates(fieldName: fn)
+                } else {
+                    let v = annotation.widgetStringValue ?? "Off"
+                    annotation.setValue(v, forAnnotationKey: PDFAnnotationKey(rawValue: "/AS"))
+                }
+                // Read the settled value for undo tracking.
+                let currentValue = annotation.widgetStringValue ?? "Off"
+                let previousValue = (currentValue == "Off" || currentValue.isEmpty) ? "Yes" : "Off"
+                formViewModel.didMakeChange(.formFieldChange(annotation: annotation, previousValue: previousValue, newValue: currentValue))
+            }
             return
         }
 

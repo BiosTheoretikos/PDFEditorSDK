@@ -20,7 +20,6 @@ class PDFFormViewModel {
     private func persistPreferences() {
         preferences.save(scope: preferencesScope)
     }
-
     var pdfDocument: PDFDocument?
     var activeTool: EditorTool = .form
     var undoStack: [UndoAction] = []
@@ -612,8 +611,13 @@ class PDFFormViewModel {
         annotation.setValue(value as Any, forAnnotationKey: .widgetValue)
         // Keep /AS in sync for button widgets so PDF renderers select the correct
         // appearance stream when the document is written or flattened.
+        // For radio button groups, sync every member of the group so that deselected
+        // siblings all carry /AS = "Off" rather than a stale on-state value.
         if annotation.widgetFieldType == .button {
             annotation.setValue(value as Any, forAnnotationKey: PDFAnnotationKey(rawValue: "/AS"))
+            if let fieldName = annotation.fieldName {
+                pdfView?.syncButtonGroupAppearanceStates(fieldName: fieldName)
+            }
         }
         pdfView?.syncFormFieldBaseline(for: annotation)
         pdfView?.refreshFormWidgetAppearance(for: annotation)
@@ -790,172 +794,16 @@ class PDFFormViewModel {
         guard document.pageCount > 0 else { return false }
         let firstBounds = document.page(at: 0)?.bounds(for: .mediaBox) ?? CGRect(x: 0, y: 0, width: 612, height: 792)
         let format = UIGraphicsPDFRendererFormat()
-        format.documentInfo = pdfDocumentInfo(from: document)
+        format.documentInfo = PDFOverlayRenderer.pdfDocumentInfo(from: document)
         let renderer = UIGraphicsPDFRenderer(bounds: firstBounds, format: format)
-        
         do {
             try renderer.writePDF(to: destinationURL) { context in
                 for pageIndex in 0..<document.pageCount {
                     guard let page = document.page(at: pageIndex) else { continue }
                     let bounds = page.bounds(for: .mediaBox)
                     context.beginPage(withBounds: bounds, pageInfo: [:])
-                    
-                    let cg = context.cgContext
-                    cg.saveGState()
-                    cg.translateBy(x: 0, y: bounds.height)
-                    cg.scaleBy(x: 1, y: -1)
-                    
-                    page.draw(with: .mediaBox, to: cg)
-                    // PDF drawing can leave the text matrix non-identity; saveGState does not
-                    // preserve it, and CTFrameDraw updates it — reset before overlay text draws.
-                    cg.textMatrix = .identity
-
-                    // Overlay current form-field values directly from widgetStringValue.
-                    // This bypasses PDFKit's lazy appearance-stream generation, which is
-                    // only triggered when a field editor resigns — meaning a field that is
-                    // still active (or was active) at share time would otherwise appear
-                    // blank or show a stale value from a previous edit session.
-                    renderFormFieldOverlay(for: page, in: cg)
-
-                    let textItems = metadata.textBoxes.filter { $0.pageIndex == pageIndex }
-                    for item in textItems {
-                        let rect = item.rect.cgRect
-                        let textCornerRadius: CGFloat = 6
-                        let textPadding = UIEdgeInsets(top: 6, left: 8, bottom: 6, right: 8)
-                        let roundedTextRect = UIBezierPath(roundedRect: rect, cornerRadius: textCornerRadius)
-                        cg.saveGState()
-                        cg.addPath(roundedTextRect.cgPath)
-                        cg.setFillColor(item.background.uiColor.cgColor)
-                        cg.fillPath()
-                        cg.restoreGState()
-                        
-                        drawText(
-                            item.text,
-                            in: rect.inset(by: textPadding),
-                            fontSize: item.fontSize ?? 14,
-                            isBold: item.isBold ?? false,
-                            textColor: (item.textColor?.uiColor) ?? .label,
-                            textAlignment: NSTextAlignment(rawValue: item.textAlignment ?? 0) ?? .left,
-                            verticalAlignment: TextVerticalAlignment(rawValue: item.verticalAlignment ?? "") ?? .top,
-                            context: cg
-                        )
-
-                        // Draw configurable border
-                        if let bw = item.borderWidth, bw > 0 {
-                            let bc = item.borderColor?.uiColor ?? UIColor.black
-                            cg.saveGState()
-                            cg.setStrokeColor(bc.cgColor)
-                            cg.setLineWidth(bw)
-                            let borderPath = UIBezierPath(roundedRect: rect.insetBy(dx: bw / 2, dy: bw / 2), cornerRadius: textCornerRadius)
-                            cg.addPath(borderPath.cgPath)
-                            cg.strokePath()
-                            cg.restoreGState()
-                        }
-                    }
-                    
-                    let imageItems = metadata.images.filter { $0.pageIndex == pageIndex }
-                    for item in imageItems {
-                        if let data = Data(base64Encoded: item.imageBase64),
-                           let image = UIImage(data: data)?.cgImage {
-                            let rect = item.rect.cgRect
-                            let imageCornerRadius: CGFloat = 6
-                            let roundedImageRect = UIBezierPath(roundedRect: rect, cornerRadius: imageCornerRadius)
-                            cg.saveGState()
-                            cg.addPath(roundedImageRect.cgPath)
-                            cg.clip()
-                            let fittedRect = aspectFitRect(for: image, in: rect)
-                            cg.draw(image, in: fittedRect)
-                            cg.restoreGState()
-
-                            // Draw configurable border
-                            if let bw = item.borderWidth, bw > 0 {
-                                let bc = item.borderColor?.uiColor ?? UIColor.black
-                                cg.saveGState()
-                                cg.setStrokeColor(bc.cgColor)
-                                cg.setLineWidth(bw)
-                                let borderPath = UIBezierPath(roundedRect: rect.insetBy(dx: bw / 2, dy: bw / 2), cornerRadius: imageCornerRadius)
-                                cg.addPath(borderPath.cgPath)
-                                cg.strokePath()
-                                cg.restoreGState()
-                            }
-                        }
-                    }
-
-                    let shapeItems = metadata.shapes.filter { $0.pageIndex == pageIndex }
-                    for item in shapeItems {
-                        guard let kind = OverlayShapeKind(rawValue: item.kindRaw) else { continue }
-                        let rect = item.rect.cgRect
-                        let insetRect = rect.insetBy(dx: item.lineWidth / 2, dy: item.lineWidth / 2)
-                        cg.saveGState()
-                        cg.setStrokeColor(item.strokeColor.uiColor.cgColor)
-                        cg.setLineWidth(item.lineWidth)
-                        cg.setLineCap(.round)
-                        cg.setLineJoin(.round)
-                        switch kind {
-                        case .circle:
-                            cg.addEllipse(in: insetRect)
-                        case .rectangle:
-                            let path = UIBezierPath(roundedRect: insetRect, cornerRadius: 4)
-                            cg.addPath(path.cgPath)
-                        case .triangle:
-                            cg.move(to: CGPoint(x: insetRect.midX, y: insetRect.minY))
-                            cg.addLine(to: CGPoint(x: insetRect.maxX, y: insetRect.maxY))
-                            cg.addLine(to: CGPoint(x: insetRect.minX, y: insetRect.maxY))
-                            cg.closePath()
-                        case .line:
-                            let points = overlayLineEndpoints(
-                                in: rect,
-                                kind: kind,
-                                lineWidth: item.lineWidth,
-                                flippedH: item.lineFlippedH ?? false,
-                                flippedV: item.lineFlippedV ?? false
-                            )
-                            cg.move(to: points.start)
-                            cg.addLine(to: points.end)
-                        case .arrow:
-                            let points = overlayLineEndpoints(
-                                in: rect,
-                                kind: kind,
-                                lineWidth: item.lineWidth,
-                                flippedH: item.lineFlippedH ?? false,
-                                flippedV: item.lineFlippedV ?? false
-                            )
-                            cg.move(to: points.start)
-                            cg.addLine(to: points.end)
-                            addArrowhead(
-                                from: points.start,
-                                to: points.end,
-                                lineWidth: item.lineWidth,
-                                context: cg
-                            )
-                        case .doubleArrow:
-                            let points = overlayLineEndpoints(
-                                in: rect,
-                                kind: kind,
-                                lineWidth: item.lineWidth,
-                                flippedH: item.lineFlippedH ?? false,
-                                flippedV: item.lineFlippedV ?? false
-                            )
-                            cg.move(to: points.start)
-                            cg.addLine(to: points.end)
-                            addArrowhead(
-                                from: points.start,
-                                to: points.end,
-                                lineWidth: item.lineWidth,
-                                context: cg
-                            )
-                            addArrowhead(
-                                from: points.end,
-                                to: points.start,
-                                lineWidth: item.lineWidth,
-                                context: cg
-                            )
-                        }
-                        cg.strokePath()
-                        cg.restoreGState()
-                    }
-
-                    cg.restoreGState()
+                    PDFOverlayRenderer.renderPage(page, pageIndex: pageIndex, metadata: metadata,
+                                                  into: context.cgContext, bounds: bounds)
                 }
             }
             return true
@@ -964,173 +812,6 @@ class PDFFormViewModel {
         }
     }
     
-    /// Draws the live `widgetStringValue` of every text and choice form field on
-    /// `page` directly into `context`, bypassing PDFKit's appearance stream.
-    ///
-    /// PDFKit only regenerates a field's appearance stream when its editor resigns
-    /// first responder. If the user taps Share while a field is still active, the
-    /// appearance stream rendered by `page.draw()` is stale or empty. This method
-    /// reads the always-current `widgetStringValue` and draws it on top, filling
-    /// the field interior first so any stale appearance-stream content is erased.
-    private func renderFormFieldOverlay(for page: PDFPage, in context: CGContext) {
-        for annotation in page.annotations {
-            let fieldType = annotation.widgetFieldType
-
-            // Button widgets (checkboxes / radio buttons): re-draw the checked state
-            // directly so the correct appearance is captured even if the PDF's /AP
-            // appearance stream has not been regenerated since the value changed.
-            if fieldType == .button {
-                let ct = annotation.widgetControlType
-                guard ct == .checkBoxControl || ct == .radioButtonControl else { continue }
-                let value = annotation.widgetStringValue ?? "Off"
-                guard value != "Off", !value.isEmpty else { continue }
-                let bounds = annotation.bounds
-                guard bounds.width > 1, bounds.height > 1 else { continue }
-                // Draw a checkmark glyph scaled to the field bounds.
-                let symbol = ct == .radioButtonControl ? "•" : "✓"
-                let fontSize = min(bounds.width, bounds.height) * 0.75
-                drawText(
-                    symbol,
-                    in: bounds,
-                    fontSize: fontSize,
-                    isBold: false,
-                    textColor: .black,
-                    textAlignment: .center,
-                    verticalAlignment: .middle,
-                    context: context
-                )
-                continue
-            }
-
-            // Only process text-input and choice (dropdown) fields below.
-            guard fieldType == .text || fieldType == .choice else { continue }
-            guard let text = annotation.widgetStringValue, !text.isEmpty else { continue }
-
-            let bounds = annotation.bounds
-            guard bounds.width > 1, bounds.height > 1 else { continue }
-
-            // Erase any stale rendered content inside the field boundary.
-            // Inset by 1 pt so the field's own border (drawn by page.draw()) is kept.
-            context.saveGState()
-            context.setFillColor(UIColor.white.cgColor)
-            context.fill(bounds.insetBy(dx: 1, dy: 1))
-            context.restoreGState()
-
-            // Read styling from the annotation; fall back to sensible defaults.
-            let font     = annotation.font ?? UIFont.systemFont(ofSize: 12)
-            let isBold   = font.fontDescriptor.symbolicTraits.contains(.traitBold)
-            let color    = annotation.fontColor ?? UIColor.black
-            let align    = annotation.alignment
-
-            // Use the same 4 pt inset PDFKit applies to its own field editor.
-            let padding  = UIEdgeInsets(top: 2, left: 4, bottom: 2, right: 4)
-            drawText(
-                text,
-                in: bounds.inset(by: padding),
-                fontSize: font.pointSize,
-                isBold: isBold,
-                textColor: color,
-                textAlignment: align,
-                verticalAlignment: .middle,
-                context: context
-            )
-        }
-    }
-
-    private func drawText(_ text: String, in rect: CGRect, fontSize: CGFloat, isBold: Bool, textColor: UIColor, textAlignment: NSTextAlignment = .left, verticalAlignment: TextVerticalAlignment = .top, context: CGContext) {
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.alignment = textAlignment
-        paragraph.lineBreakMode = .byWordWrapping
-        let font = isBold ? UIFont.boldSystemFont(ofSize: fontSize) : UIFont.systemFont(ofSize: fontSize)
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: font,
-            .foregroundColor: textColor,
-            .paragraphStyle: paragraph
-        ]
-        let attributed = NSAttributedString(string: text, attributes: attributes)
-        let framesetter = CTFramesetterCreateWithAttributedString(attributed)
-
-        // Offset the draw rect for middle/bottom vertical alignment.
-        var drawRect = rect
-        if verticalAlignment != .top {
-            let constraints = CGSize(width: rect.width, height: .greatestFiniteMagnitude)
-            let suggested = CTFramesetterSuggestFrameSizeWithConstraints(framesetter, CFRangeMake(0, 0), nil, constraints, nil)
-            let textHeight = min(suggested.height, rect.height)
-            switch verticalAlignment {
-            case .top: break
-            case .middle:
-                let offset = max(0, (rect.height - textHeight) / 2)
-                drawRect = CGRect(x: rect.minX, y: rect.minY + offset, width: rect.width, height: rect.height - offset)
-            case .bottom:
-                let offset = max(0, rect.height - textHeight)
-                drawRect = CGRect(x: rect.minX, y: rect.minY + offset, width: rect.width, height: rect.height - offset)
-            }
-        }
-
-        context.saveGState()
-        context.textMatrix = .identity
-        let path = CGPath(rect: drawRect, transform: nil)
-        let frame = CTFramesetterCreateFrame(framesetter, CFRangeMake(0, attributed.length), path, nil)
-        CTFrameDraw(frame, context)
-        context.textMatrix = .identity
-        context.restoreGState()
-    }
-
-    private func aspectFitRect(for image: CGImage, in rect: CGRect) -> CGRect {
-        let imageSize = CGSize(width: image.width, height: image.height)
-        guard imageSize.width > 0, imageSize.height > 0 else { return rect }
-        let scale = min(rect.width / imageSize.width, rect.height / imageSize.height)
-        let size = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
-        let origin = CGPoint(
-            x: rect.midX - size.width / 2,
-            y: rect.midY - size.height / 2
-        )
-        return CGRect(origin: origin, size: size)
-    }
-
-    private func overlayLineEndpoints(
-        in rect: CGRect,
-        kind: OverlayShapeKind,
-        lineWidth: CGFloat,
-        flippedH: Bool,
-        flippedV: Bool
-    ) -> (start: CGPoint, end: CGPoint) {
-        let inset = ShapeBoxView.lineDrawingInset(for: kind, lineWidth: lineWidth)
-        let drawableRect = rect.insetBy(dx: min(inset, rect.width / 2), dy: min(inset, rect.height / 2))
-        let start = CGPoint(
-            x: flippedH ? drawableRect.maxX : drawableRect.minX,
-            y: flippedV ? drawableRect.maxY : drawableRect.minY
-        )
-        let end = CGPoint(
-            x: flippedH ? drawableRect.minX : drawableRect.maxX,
-            y: flippedV ? drawableRect.minY : drawableRect.maxY
-        )
-        return (start, end)
-    }
-
-    private func addArrowhead(from start: CGPoint, to end: CGPoint, lineWidth: CGFloat, context: CGContext) {
-        let dx = end.x - start.x
-        let dy = end.y - start.y
-        let length = hypot(dx, dy)
-        guard length > 1 else { return }
-
-        let angle = atan2(dy, dx)
-        let headLength = max(lineWidth * 5, 18)
-        let headAngle: CGFloat = .pi / 6
-        let firstPoint = CGPoint(
-            x: end.x - headLength * cos(angle - headAngle),
-            y: end.y - headLength * sin(angle - headAngle)
-        )
-        let secondPoint = CGPoint(
-            x: end.x - headLength * cos(angle + headAngle),
-            y: end.y - headLength * sin(angle + headAngle)
-        )
-
-        context.move(to: firstPoint)
-        context.addLine(to: end)
-        context.addLine(to: secondPoint)
-    }
-
     /// Sets /NeedAppearances to false in the saved PDF so Windows viewers (Adobe, Chrome)
     /// do not re-render form-field text on top of the existing appearance streams.
     /// The target and replacement strings are the same byte length, so no offset patching is needed.
@@ -1214,32 +895,6 @@ class PDFFormViewModel {
         return candidate
     }
 
-    private func pdfDocumentInfo(from document: PDFDocument) -> [String: Any] {
-        guard let attributes = document.documentAttributes else { return [:] }
-        var info: [String: Any] = [:]
-
-        if let title = attributes[PDFDocumentAttribute.titleAttribute] as? String, !title.isEmpty {
-            info[kCGPDFContextTitle as String] = title
-        }
-        if let author = attributes[PDFDocumentAttribute.authorAttribute] as? String, !author.isEmpty {
-            info[kCGPDFContextAuthor as String] = author
-        }
-        if let subject = attributes[PDFDocumentAttribute.subjectAttribute] as? String, !subject.isEmpty {
-            info[kCGPDFContextSubject as String] = subject
-        }
-        if let creator = attributes[PDFDocumentAttribute.creatorAttribute] as? String, !creator.isEmpty {
-            info[kCGPDFContextCreator as String] = creator
-        }
-        if let keywords = attributes[PDFDocumentAttribute.keywordsAttribute] {
-            if let keywordString = keywords as? String, !keywordString.isEmpty {
-                info[kCGPDFContextKeywords as String] = keywordString
-            } else if let keywordList = keywords as? [String], !keywordList.isEmpty {
-                info[kCGPDFContextKeywords as String] = keywordList
-            }
-        }
-
-        return info
-    }
 }
 
 // MARK: - PencilGestureHandler Conformance

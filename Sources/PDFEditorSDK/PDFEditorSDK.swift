@@ -1,4 +1,6 @@
 import SwiftUI
+import PDFKit
+import UIKit
 
 /// Describes a PDF form field, used to determine whether it should receive a blue highlight overlay.
 public struct PDFFormFieldInfo: Sendable {
@@ -36,6 +38,86 @@ public struct PDFEditorFileRequest: Sendable {
 }
 
 public typealias PDFEditorFileHandler = (PDFEditorFileRequest) throws -> URL
+
+// MARK: - Static utilities
+
+public enum PDFEditorSDK {
+
+    /// Generates a thumbnail image for one page of an editable PDF saved by this SDK.
+    ///
+    /// Unlike a plain `page.draw()` call, this method also renders all overlay content
+    /// (shapes, text boxes, images) that the SDK stores as embedded metadata rather than
+    /// as visible PDF annotations.
+    ///
+    /// - Parameters:
+    ///   - url: URL of an editable PDF produced by this SDK.
+    ///   - pageIndex: Zero-based index of the page to render. Defaults to `0`.
+    ///   - size: The pixel dimensions of the returned image.
+    /// - Returns: A rendered `UIImage`, or `nil` if the document could not be loaded.
+    public static func thumbnail(for url: URL, pageIndex: Int = 0, size: CGSize) -> UIImage? {
+        guard let document = PDFDocument(url: url),
+              let page = document.page(at: pageIndex) else { return nil }
+        let metadata = PDFOverlayRenderer.readOverlayMetadata(from: document)
+        let bounds = page.bounds(for: .mediaBox)
+        let scale = min(size.width / bounds.width, size.height / bounds.height)
+        let renderSize = CGSize(width: bounds.width * scale, height: bounds.height * scale)
+        let renderer = UIGraphicsImageRenderer(size: renderSize)
+        return renderer.image { ctx in
+            UIColor.white.setFill()
+            ctx.fill(CGRect(origin: .zero, size: renderSize))
+            let cg = ctx.cgContext
+            cg.scaleBy(x: scale, y: scale)
+            PDFOverlayRenderer.renderPage(page, pageIndex: pageIndex, metadata: metadata,
+                                          into: cg, bounds: bounds)
+        }
+    }
+
+    /// Produces a flattened PDF from an editable PDF saved by this SDK.
+    ///
+    /// All overlay content (shapes, text boxes, images, ink drawings) and form field
+    /// values are burned into the output as static PDF content. The result can be
+    /// opened in any PDF viewer without needing the SDK.
+    ///
+    /// - Parameter url: URL of an editable PDF produced by this SDK.
+    /// - Returns: A URL to a temporary file containing the flattened PDF, or `nil` on failure.
+    ///   Copy or move this file before the next call; it lives in `FileManager.temporaryDirectory`.
+    public static func flattenedPDF(from url: URL) -> URL? {
+        guard let document = PDFDocument(url: url), document.pageCount > 0 else { return nil }
+        let metadata = PDFOverlayRenderer.readOverlayMetadata(from: document)
+
+        let baseName = url.deletingPathExtension().lastPathComponent
+        let fileName = "\(baseName)-Flattened.pdf"
+        let outputURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+            .appendingPathComponent(fileName)
+        try? FileManager.default.createDirectory(
+            at: outputURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true,
+            attributes: nil
+        )
+
+        let firstBounds = document.page(at: 0)?.bounds(for: .mediaBox)
+            ?? CGRect(x: 0, y: 0, width: 612, height: 792)
+        let format = UIGraphicsPDFRendererFormat()
+        format.documentInfo = PDFOverlayRenderer.pdfDocumentInfo(from: document)
+        let renderer = UIGraphicsPDFRenderer(bounds: firstBounds, format: format)
+
+        do {
+            try renderer.writePDF(to: outputURL) { context in
+                for pageIndex in 0..<document.pageCount {
+                    guard let page = document.page(at: pageIndex) else { continue }
+                    let bounds = page.bounds(for: .mediaBox)
+                    context.beginPage(withBounds: bounds, pageInfo: [:])
+                    PDFOverlayRenderer.renderPage(page, pageIndex: pageIndex, metadata: metadata,
+                                                  into: context.cgContext, bounds: bounds)
+                }
+            }
+            return outputURL
+        } catch {
+            return nil
+        }
+    }
+}
 
 public struct PDFEditorView: View {
     @State private var viewModel: PDFFormViewModel
