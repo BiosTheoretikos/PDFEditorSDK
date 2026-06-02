@@ -58,14 +58,20 @@ enum PDFOverlayRenderer {
 
     /// Renders `page` with all overlay items for that page drawn on top.
     ///
-    /// The caller is responsible for setting up the coordinate transform so that
-    /// PDF space (origin at bottom-left) maps correctly onto `cg`.
+    /// - Parameters:
+    ///   - applyFormFieldOverlay: When `true` (the editor flatten path), form field text values
+    ///     are re-drawn over a white fill as a safety net for fields whose PDFKit appearance stream
+    ///     may not yet have been regenerated (e.g. a field still being edited when Share is tapped).
+    ///     Pass `false` when flattening a file that was already written to disk — appearance streams
+    ///     are committed, `page.draw()` renders them correctly, and skipping the white fill preserves
+    ///     ink strokes that cross form field boundaries.
     static func renderPage(
         _ page: PDFPage,
         pageIndex: Int,
         metadata: OverlayDocumentMetadata,
         into cg: CGContext,
-        bounds: CGRect
+        bounds: CGRect,
+        applyFormFieldOverlay: Bool = true
     ) {
         cg.saveGState()
         cg.translateBy(x: 0, y: bounds.height)
@@ -74,7 +80,9 @@ enum PDFOverlayRenderer {
         page.draw(with: .mediaBox, to: cg)
         cg.textMatrix = .identity
 
-        renderFormFieldOverlay(for: page, in: cg)
+        if applyFormFieldOverlay {
+            renderFormFieldOverlay(for: page, in: cg)
+        }
 
         let textItems = metadata.textBoxes.filter { $0.pageIndex == pageIndex }
         for item in textItems {
@@ -155,9 +163,12 @@ enum PDFOverlayRenderer {
             case .rectangle:
                 cg.addPath(UIBezierPath(roundedRect: insetRect, cornerRadius: 4).cgPath)
             case .triangle:
-                cg.move(to: CGPoint(x: insetRect.midX, y: insetRect.minY))
-                cg.addLine(to: CGPoint(x: insetRect.maxX, y: insetRect.maxY))
-                cg.addLine(to: CGPoint(x: insetRect.minX, y: insetRect.maxY))
+                // Stored rects are in PDF page coordinates (y-up). In this flipped context
+                // maxY is the visual top of the rect and minY is the visual bottom, so the
+                // apex goes at maxY to produce an upward-pointing triangle (▲).
+                cg.move(to: CGPoint(x: insetRect.midX, y: insetRect.maxY))
+                cg.addLine(to: CGPoint(x: insetRect.maxX, y: insetRect.minY))
+                cg.addLine(to: CGPoint(x: insetRect.minX, y: insetRect.minY))
                 cg.closePath()
             case .line:
                 let pts = overlayLineEndpoints(in: rect, kind: kind, lineWidth: item.lineWidth,

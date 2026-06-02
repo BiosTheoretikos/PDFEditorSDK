@@ -108,8 +108,12 @@ public enum PDFEditorSDK {
                     guard let page = document.page(at: pageIndex) else { continue }
                     let bounds = page.bounds(for: .mediaBox)
                     context.beginPage(withBounds: bounds, pageInfo: [:])
+                    // applyFormFieldOverlay: false — the file was already written by PDFKit so
+                    // all appearance streams are committed. page.draw() renders them correctly,
+                    // and skipping the white-fill pass keeps ink strokes intact over form fields.
                     PDFOverlayRenderer.renderPage(page, pageIndex: pageIndex, metadata: metadata,
-                                                  into: context.cgContext, bounds: bounds)
+                                                  into: context.cgContext, bounds: bounds,
+                                                  applyFormFieldOverlay: false)
                 }
             }
             return outputURL
