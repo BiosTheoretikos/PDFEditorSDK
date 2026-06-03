@@ -9,6 +9,7 @@ enum PDFOverlayRenderer {
 
     static let overlayMetadataPrefix     = "OVERLAY_META_V1:"
     static let overlayMetadataPartPrefix = "OVERLAY_META_V1_PART:"
+    static let overlayAnnotationKey      = PDFAnnotationKey(rawValue: "/PDFEditorOverlay")
 
     // MARK: - Overlay metadata I/O
 
@@ -45,6 +46,10 @@ enum PDFOverlayRenderer {
             encoded = (1...totalParts).compactMap { parts[$0] }.joined()
         }
 
+        if let metadata = readRealOverlayAnnotationMetadata(from: document) {
+            return metadata
+        }
+
         guard let encoded,
               let data = Data(base64Encoded: encoded),
               let metadata = try? JSONDecoder().decode(OverlayDocumentMetadata.self, from: data)
@@ -52,6 +57,43 @@ enum PDFOverlayRenderer {
             return OverlayDocumentMetadata()
         }
         return metadata
+    }
+
+    private static func readRealOverlayAnnotationMetadata(from document: PDFDocument) -> OverlayDocumentMetadata? {
+        var textMetas: [OverlayTextBoxMeta] = []
+        var imageMetas: [OverlayImageMeta] = []
+        var shapeMetas: [OverlayShapeMeta] = []
+        let decoder = JSONDecoder()
+
+        for pageIndex in 0..<document.pageCount {
+            guard let page = document.page(at: pageIndex) else { continue }
+            for annotation in page.annotations {
+                guard let raw = annotation.value(forAnnotationKey: overlayAnnotationKey) as? String else { continue }
+                let parts = raw.split(separator: ":", maxSplits: 1)
+                guard parts.count == 2,
+                      let jsonData = Data(base64Encoded: String(parts[1])) else { continue }
+
+                switch parts[0] {
+                case "text":
+                    if let meta = try? decoder.decode(OverlayTextBoxMeta.self, from: jsonData) {
+                        textMetas.append(meta)
+                    }
+                case "image":
+                    if let meta = try? decoder.decode(OverlayImageMeta.self, from: jsonData) {
+                        imageMetas.append(meta)
+                    }
+                case "shape":
+                    if let meta = try? decoder.decode(OverlayShapeMeta.self, from: jsonData) {
+                        shapeMetas.append(meta)
+                    }
+                default:
+                    continue
+                }
+            }
+        }
+
+        guard !textMetas.isEmpty || !imageMetas.isEmpty || !shapeMetas.isEmpty else { return nil }
+        return OverlayDocumentMetadata(textBoxes: textMetas, images: imageMetas, shapes: shapeMetas)
     }
 
     // MARK: - Page rendering
@@ -124,13 +166,13 @@ enum PDFOverlayRenderer {
         let imageItems = metadata.images.filter { $0.pageIndex == pageIndex }
         for item in imageItems {
             guard let data = Data(base64Encoded: item.imageBase64),
-                  let cgImage = UIImage(data: data)?.cgImage else { continue }
+                  let image = UIImage(data: data) else { continue }
             let rect = item.rect.cgRect
             let cornerRadius: CGFloat = 6
             cg.saveGState()
             cg.addPath(UIBezierPath(roundedRect: rect, cornerRadius: cornerRadius).cgPath)
             cg.clip()
-            cg.draw(cgImage, in: aspectFitRect(for: cgImage, in: rect))
+            drawOverlayImage(image, in: rect, context: cg)
             cg.restoreGState()
 
             if let bw = item.borderWidth, bw > 0 {
@@ -298,6 +340,25 @@ enum PDFOverlayRenderer {
         )
     }
 
+    static func drawOverlayImage(_ image: UIImage, in rect: CGRect, context: CGContext) {
+        guard let cgImage = normalizedOverlayCGImage(from: image) else { return }
+        context.draw(cgImage, in: aspectFitRect(for: cgImage, in: rect))
+    }
+
+    private static func normalizedOverlayCGImage(from image: UIImage) -> CGImage? {
+        if image.imageOrientation == .up, let cgImage = image.cgImage {
+            return cgImage
+        }
+
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = image.scale
+        format.opaque = false
+        let normalized = UIGraphicsImageRenderer(size: image.size, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: image.size))
+        }
+        return normalized.cgImage
+    }
+
     static func overlayLineEndpoints(
         in rect: CGRect,
         kind: OverlayShapeKind,
@@ -307,14 +368,18 @@ enum PDFOverlayRenderer {
     ) -> (start: CGPoint, end: CGPoint) {
         let inset = ShapeBoxView.lineDrawingInset(for: kind, lineWidth: lineWidth)
         let drawableRect = rect.insetBy(dx: min(inset, rect.width / 2), dy: min(inset, rect.height / 2))
+        // This function operates in PDF y-UP coordinate space (origin bottom-left).
+        // The flippedH / flippedV flags were recorded in the editor using UIKit y-DOWN
+        // conventions where maxY = visual bottom. In PDF y-up, the visual bottom is
+        // minY — so we swap minY/maxY for the y-axis to preserve the intended direction.
         return (
             start: CGPoint(
                 x: flippedH ? drawableRect.maxX : drawableRect.minX,
-                y: flippedV ? drawableRect.maxY : drawableRect.minY
+                y: flippedV ? drawableRect.minY : drawableRect.maxY   // minY = visual bottom in y-up
             ),
             end: CGPoint(
                 x: flippedH ? drawableRect.minX : drawableRect.maxX,
-                y: flippedV ? drawableRect.minY : drawableRect.maxY
+                y: flippedV ? drawableRect.maxY : drawableRect.minY   // maxY = visual top in y-up
             )
         )
     }

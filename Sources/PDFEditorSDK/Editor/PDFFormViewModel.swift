@@ -148,6 +148,7 @@ class PDFFormViewModel {
     var lastSavedURL: URL?
     private let maxUndoActions = 50
     private var didLoadOverlayMetadata = false
+    private var pendingOverlayMetadata: OverlayDocumentMetadata?
     var needsOverlayRestore = false
     var currentPageIndex: Int = 0
     var pageCount: Int = 0
@@ -224,11 +225,12 @@ class PDFFormViewModel {
     @discardableResult
     func loadPDF(from url: URL) -> Bool {
         currentDocumentURL = url
-        pdfDocument = PDFDocument(url: url)
-        guard pdfDocument != nil else {
+        guard let document = PDFDocument(url: url) else {
             openStatus = "Failed to open PDF"
             return false
         }
+        pendingOverlayMetadata = extractRealOverlayMetadata(from: document)
+        pdfDocument = document
         didLoadOverlayMetadata = false
         needsOverlayRestore = true
         updatePageMetrics()
@@ -433,8 +435,57 @@ class PDFFormViewModel {
     
     func restoreOverlaysIfNeeded() {
         guard !didLoadOverlayMetadata else { return }
-        pdfView?.readOverlayMetadata()
+        if let pendingOverlayMetadata {
+            pdfView?.restoreOverlayMetadata(pendingOverlayMetadata)
+            self.pendingOverlayMetadata = nil
+        } else {
+            pdfView?.readOverlayMetadata()
+        }
         didLoadOverlayMetadata = true
+    }
+
+    private func extractRealOverlayMetadata(from document: PDFDocument) -> OverlayDocumentMetadata? {
+        let overlayKey = PDFOverlayRenderer.overlayAnnotationKey
+        var textMetas: [OverlayTextBoxMeta] = []
+        var imageMetas: [OverlayImageMeta] = []
+        var shapeMetas: [OverlayShapeMeta] = []
+        var toRemove: [(PDFPage, PDFAnnotation)] = []
+        let decoder = JSONDecoder()
+
+        for pageIndex in 0..<document.pageCount {
+            guard let page = document.page(at: pageIndex) else { continue }
+            for annotation in page.annotations {
+                guard let raw = annotation.value(forAnnotationKey: overlayKey) as? String else { continue }
+                toRemove.append((page, annotation))
+
+                let parts = raw.split(separator: ":", maxSplits: 1)
+                guard parts.count == 2,
+                      let jsonData = Data(base64Encoded: String(parts[1])) else { continue }
+
+                switch parts[0] {
+                case "text":
+                    if let meta = try? decoder.decode(OverlayTextBoxMeta.self, from: jsonData) {
+                        textMetas.append(meta)
+                    }
+                case "image":
+                    if let meta = try? decoder.decode(OverlayImageMeta.self, from: jsonData) {
+                        imageMetas.append(meta)
+                    }
+                case "shape":
+                    if let meta = try? decoder.decode(OverlayShapeMeta.self, from: jsonData) {
+                        shapeMetas.append(meta)
+                    }
+                default:
+                    continue
+                }
+            }
+        }
+
+        guard !toRemove.isEmpty else { return nil }
+        for (page, annotation) in toRemove {
+            page.removeAnnotation(annotation)
+        }
+        return OverlayDocumentMetadata(textBoxes: textMetas, images: imageMetas, shapes: shapeMetas)
     }
     
     func undo() {
@@ -660,9 +711,22 @@ class PDFFormViewModel {
 
     @discardableResult
     func savePDF() -> URL? {
-        guard let document = pdfDocument else { return nil }
-        
-        pdfView?.writeOverlayMetadata()
+        guard pdfDocument != nil else { return nil }
+
+        // Commit any in-progress form field edit so PDFKit generates a current
+        // appearance stream before writing. Without this, a field that is still
+        // focused when Save is tapped may have a stale or absent appearance stream,
+        // causing PDFKit to set /NeedAppearances true in the AcroForm dictionary.
+        pdfView?.commitActiveFormWidgetTextToAnnotations()
+        pdfView?.endEditing(true)
+
+        // Write real PDF annotations into a copy of the displayed document so
+        // third-party readers can see overlays without polluting PDFKit's live
+        // editor render cache with temporary stamp appearances.
+        guard let editableDocument = pdfView?.editableExportDocumentCopy() else {
+            saveStatus = "Failed to save PDF"
+            return nil
+        }
 
         let fileName = defaultFileName(for: .editable)
         let stagingURL = stagingURL(fileName: fileName)
@@ -672,11 +736,10 @@ class PDFFormViewModel {
             attributes: nil
         )
 
-        guard document.write(to: stagingURL) else {
+        guard editableDocument.write(to: stagingURL) else {
             saveStatus = "Failed to save PDF"
             return nil
         }
-        patchNeedAppearances(at: stagingURL)
 
         do {
             let finalURL = try finalizeGeneratedFile(
@@ -705,12 +768,18 @@ class PDFFormViewModel {
     /// file regardless of where the host app's save handler would normally put it.
     /// Does not modify currentDocumentURL / lastSavedURL.
     func exportEditablePDF() -> URL? {
-        guard let document = pdfDocument else {
+        guard pdfDocument != nil else {
             exportStatus = "Failed to export PDF"
             return nil
         }
 
-        pdfView?.writeOverlayMetadata()
+        pdfView?.commitActiveFormWidgetTextToAnnotations()
+        pdfView?.endEditing(true)
+
+        guard let editableDocument = pdfView?.editableExportDocumentCopy() else {
+            exportStatus = "Failed to export PDF"
+            return nil
+        }
 
         let fileName = defaultFileName(for: .editable)
         let tempURL = stagingURL(fileName: fileName)
@@ -720,11 +789,10 @@ class PDFFormViewModel {
             attributes: nil
         )
 
-        guard document.write(to: tempURL) else {
+        guard editableDocument.write(to: tempURL) else {
             exportStatus = "Failed to export PDF"
             return nil
         }
-        patchNeedAppearances(at: tempURL)
         exportStatus = "Ready to share"
         return tempURL
     }
@@ -812,18 +880,6 @@ class PDFFormViewModel {
         }
     }
     
-    /// Sets /NeedAppearances to false in the saved PDF so Windows viewers (Adobe, Chrome)
-    /// do not re-render form-field text on top of the existing appearance streams.
-    /// The target and replacement strings are the same byte length, so no offset patching is needed.
-    private func patchNeedAppearances(at url: URL) {
-        guard var data = try? Data(contentsOf: url) else { return }
-        let target = Data("/NeedAppearances true".utf8)
-        let replacement = Data("/NeedAppearances false".utf8)
-        guard let range = data.range(of: target) else { return }
-        data.replaceSubrange(range, with: replacement)
-        try? data.write(to: url)
-    }
-
     private func defaultFileName(for kind: PDFEditorDocumentKind) -> String {
         let baseName = currentDocumentURL?.deletingPathExtension().lastPathComponent ?? "Document"
         switch kind {

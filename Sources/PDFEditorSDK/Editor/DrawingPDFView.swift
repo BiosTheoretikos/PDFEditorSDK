@@ -2019,65 +2019,272 @@ class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, PencilDraw
         updateOverlaySelectionUI()
     }
 
-    func writeOverlayMetadata() {
-        guard let document else { return }
-        
-        let metadata = overlayMetadataSnapshot()
-        let isEmpty = metadata.textBoxes.isEmpty && metadata.images.isEmpty && metadata.shapes.isEmpty
-        
+    // MARK: - Real overlay annotation writing
+
+    private let sdkOverlayKey = PDFOverlayRenderer.overlayAnnotationKey
+
+    /// Builds a separate PDF document for editable save/share with real SDK overlay
+    /// annotations written into the copy. The live `PDFView` document is left
+    /// untouched so PDFKit cannot cache temporary stamp appearances in the editor.
+    func editableExportDocumentCopy() -> PDFDocument? {
+        guard let document,
+              let data = document.dataRepresentation(),
+              let copiedDocument = PDFDocument(data: data) else { return nil }
+        _ = writeRealOverlayAnnotations(metadata: overlayMetadataSnapshot(), to: copiedDocument)
+        return copiedDocument
+    }
+
+    /// Writes each overlay as a real, visible PDF annotation so third-party tools
+    /// can render them. Each annotation carries a `/PDFEditorOverlay` key whose
+    /// value encodes the overlay type and full style payload for round-tripping.
+    ///
+    /// Returns every `(page, annotation)` pair that was added so the caller can
+    /// remove them from the in-memory document after writing to disk — the UIKit
+    /// overlay views remain the source of truth while the editor is open.
+    func writeRealOverlayAnnotations() -> [(PDFPage, PDFAnnotation)] {
+        guard let document else { return [] }
+        return writeRealOverlayAnnotations(metadata: overlayMetadataSnapshot(), to: document)
+    }
+
+    private func writeRealOverlayAnnotations(
+        metadata: OverlayDocumentMetadata,
+        to document: PDFDocument
+    ) -> [(PDFPage, PDFAnnotation)] {
+        // Remove any pre-existing SDK overlay annotations from all pages.
         for pageIndex in 0..<document.pageCount {
             guard let page = document.page(at: pageIndex) else { continue }
-            for annotation in page.annotations where annotation.contents?.hasPrefix(overlayMetadataPrefix) == true || annotation.contents?.hasPrefix(overlayMetadataPartPrefix) == true {
+            for annotation in page.annotations where annotation.value(forAnnotationKey: sdkOverlayKey) != nil
+                                                  || annotation.contents?.hasPrefix(overlayMetadataPrefix) == true
+                                                  || annotation.contents?.hasPrefix(overlayMetadataPartPrefix) == true {
                 page.removeAnnotation(annotation)
             }
         }
-        
-        guard !isEmpty else { return }
-        
-        let encoder = JSONEncoder()
-        guard let data = try? encoder.encode(metadata) else { return }
-        let base64 = data.base64EncodedString()
-        
-        guard let firstPage = document.page(at: 0) else { return }
-        let maxChunkSize = 20000
-        let chunks = stride(from: 0, to: base64.count, by: maxChunkSize).map { start -> String in
-            let startIndex = base64.index(base64.startIndex, offsetBy: start)
-            let endIndex = base64.index(startIndex, offsetBy: min(maxChunkSize, base64.count - start))
-            return String(base64[startIndex..<endIndex])
-        }
-        
-        if chunks.count == 1 {
-            let contents = overlayMetadataPrefix + chunks[0]
-            let annotation = PDFAnnotation(bounds: CGRect(x: 0, y: 0, width: 1, height: 1), forType: .text, withProperties: nil)
-            annotation.contents = contents
-            annotation.shouldDisplay = false
-            annotation.shouldPrint = false
-            firstPage.addAnnotation(annotation)
-        } else {
-            for (index, chunk) in chunks.enumerated() {
-                let contents = "\(overlayMetadataPartPrefix)\(index+1)/\(chunks.count):" + chunk
-                let annotation = PDFAnnotation(bounds: CGRect(x: 0, y: 0, width: 1, height: 1), forType: .text, withProperties: nil)
-                annotation.contents = contents
-                annotation.shouldDisplay = false
-                annotation.shouldPrint = false
-                firstPage.addAnnotation(annotation)
+
+        var added: [(PDFPage, PDFAnnotation)] = []
+
+        // Text boxes → FreeText annotations
+        for meta in metadata.textBoxes {
+            guard let page = document.page(at: meta.pageIndex) else { continue }
+            if let annotation = makeTextBoxAnnotation(meta: meta) {
+                page.addAnnotation(annotation)
+                added.append((page, annotation))
             }
         }
+
+        // Shapes → typed PDF annotations
+        for meta in metadata.shapes {
+            guard let page = document.page(at: meta.pageIndex) else { continue }
+            if let annotation = makeShapeAnnotation(meta: meta) {
+                page.addAnnotation(annotation)
+                added.append((page, annotation))
+            }
+        }
+
+        // Images → stamp annotations with custom draw
+        for meta in metadata.images {
+            guard let page = document.page(at: meta.pageIndex) else { continue }
+            if let annotation = makeImageAnnotation(meta: meta) {
+                page.addAnnotation(annotation)
+                added.append((page, annotation))
+            }
+        }
+
+        return added
     }
+
+    /// Removes annotations that were temporarily added to the in-memory document
+    /// for writing. Call this after `document.write(to:)` completes.
+    func removeRealOverlayAnnotations(_ pairs: [(PDFPage, PDFAnnotation)]) {
+        var dirtyRects: [CGRect] = []
+        for (page, annotation) in pairs {
+            dirtyRects.append(convert(annotation.bounds, from: page).insetBy(dx: -8, dy: -8))
+            page.removeAnnotation(annotation)
+        }
+        refreshRemovedOverlayAnnotationRegions(dirtyRects)
+    }
+
+    private func refreshRemovedOverlayAnnotationRegions(_ rects: [CGRect]) {
+        guard !rects.isEmpty else { return }
+        for rect in rects {
+            setNeedsDisplay(rect)
+            documentView?.setNeedsDisplay(rect)
+        }
+        setNeedsDisplay()
+        documentView?.setNeedsDisplay()
+        documentView?.setNeedsLayout()
+        scrollView?.setNeedsDisplay()
+        scrollView?.setNeedsLayout()
+        layoutDocumentView()
+    }
+
+    // MARK: Annotation factory helpers
+
+    private func makeTextBoxAnnotation(meta: OverlayTextBoxMeta) -> PDFAnnotation? {
+        let rect       = meta.rect.cgRect
+        let annotation = PDFTextBoxAnnotation(bounds: rect)
+
+        // Populate the style used by draw(with:in:) to generate the appearance stream.
+        annotation.style = PDFTextBoxAnnotation.Style(
+            text:               meta.text,
+            fontSize:           meta.fontSize ?? 14,
+            isBold:             meta.isBold ?? false,
+            textColor:          meta.textColor?.uiColor ?? .black,
+            backgroundColor:    meta.background.uiColor,
+            textAlignment:      NSTextAlignment(rawValue: meta.textAlignment ?? 0) ?? .left,
+            verticalAlignment:  TextVerticalAlignment(rawValue: meta.verticalAlignment ?? "") ?? .top,
+            borderWidth:        meta.borderWidth ?? 0,
+            borderColor:        meta.borderColor?.uiColor ?? .black)
+
+        // Also set native freeText properties so fallback viewers that don't render
+        // the appearance stream still show the text content.
+        annotation.contents  = meta.text
+        annotation.font      = (meta.isBold == true)
+            ? UIFont.boldSystemFont(ofSize: meta.fontSize ?? 14)
+            : UIFont.systemFont(ofSize: meta.fontSize ?? 14)
+        annotation.fontColor = meta.textColor?.uiColor ?? .black
+        annotation.alignment = NSTextAlignment(rawValue: meta.textAlignment ?? 0) ?? .left
+
+        annotation.shouldDisplay = true
+        annotation.shouldPrint   = true
+        storeOverlayPayload(meta, kind: "text", on: annotation)
+        return annotation
+    }
+
+    private func makeShapeAnnotation(meta: OverlayShapeMeta) -> PDFAnnotation? {
+        guard let kind = OverlayShapeKind(rawValue: meta.kindRaw) else { return nil }
+        let rect        = meta.rect.cgRect
+        let strokeColor = meta.strokeColor.uiColor
+        let lineWidth   = meta.lineWidth
+        let border: PDFBorder = { let b = PDFBorder(); b.lineWidth = lineWidth; return b }()
+
+        let annotation: PDFAnnotation
+
+        switch kind {
+        case .circle:
+            annotation = PDFAnnotation(bounds: rect, forType: .circle, withProperties: nil)
+            annotation.color  = strokeColor
+            annotation.border = border
+            if #available(iOS 16.0, *) { annotation.interiorColor = .clear }
+
+        case .rectangle:
+            annotation = PDFAnnotation(bounds: rect, forType: .square, withProperties: nil)
+            annotation.color  = strokeColor
+            annotation.border = border
+            if #available(iOS 16.0, *) { annotation.interiorColor = .clear }
+
+        case .triangle:
+            let tri = PDFTriangleAnnotation(bounds: rect)
+            tri.shapeColor    = strokeColor
+            tri.shapeLineWidth = lineWidth
+            annotation = tri
+
+        case .line, .arrow, .doubleArrow:
+            let flippedH = meta.lineFlippedH ?? false
+            let flippedV = meta.lineFlippedV ?? false
+            let (start, end) = PDFOverlayRenderer.overlayLineEndpoints(
+                in: rect, kind: kind, lineWidth: lineWidth,
+                flippedH: flippedH, flippedV: flippedV)
+
+            annotation = PDFAnnotation(bounds: rect, forType: .line, withProperties: nil)
+            annotation.color  = strokeColor
+            annotation.border = border
+            annotation.setValue([start.x, start.y, end.x, end.y] as [NSNumber],
+                                forAnnotationKey: PDFAnnotationKey(rawValue: "/L"))
+
+            if kind == .arrow {
+                annotation.setValue(["None", "OpenArrow"] as [NSString],
+                                    forAnnotationKey: PDFAnnotationKey(rawValue: "/LE"))
+            } else if kind == .doubleArrow {
+                annotation.setValue(["OpenArrow", "OpenArrow"] as [NSString],
+                                    forAnnotationKey: PDFAnnotationKey(rawValue: "/LE"))
+            }
+        }
+
+        annotation.shouldDisplay = true
+        annotation.shouldPrint   = true
+        storeOverlayPayload(meta, kind: "shape", on: annotation)
+        return annotation
+    }
+
+    private func makeImageAnnotation(meta: OverlayImageMeta) -> PDFAnnotation? {
+        guard let data  = Data(base64Encoded: meta.imageBase64),
+              let image = UIImage(data: data) else { return nil }
+
+        let imgAnnotation = PDFImageAnnotation(bounds: meta.rect.cgRect)
+        imgAnnotation.overlayImage      = image
+        imgAnnotation.imageBorderWidth  = meta.borderWidth ?? 0
+        imgAnnotation.imageBorderColor  = meta.borderColor?.uiColor ?? .black
+        imgAnnotation.shouldDisplay     = true
+        imgAnnotation.shouldPrint       = true
+        storeOverlayPayload(meta, kind: "image", on: imgAnnotation)
+        return imgAnnotation
+    }
+
+    private func storeOverlayPayload<T: Encodable>(_ value: T, kind: String, on annotation: PDFAnnotation) {
+        guard let json   = try? JSONEncoder().encode(value),
+              let base64 = String(data: json.base64EncodedData(), encoding: .utf8) else { return }
+        annotation.setValue("\(kind):\(base64)" as NSString, forAnnotationKey: sdkOverlayKey)
+    }
+
+    // MARK: - Legacy blob metadata (kept for reading old files)
+    // writeOverlayMetadata is replaced by writeRealOverlayAnnotations; this
+    // function name is kept so any call sites compile, but it is a no-op.
+    func writeOverlayMetadata() { }
     
     func readOverlayMetadata() {
         guard let document else { return }
-        
-        var encoded: String?
-        var parts: [Int: String] = [:]
-        var totalParts: Int?
+
+        // ── New format: one real annotation per overlay ──────────────────────
+        // Scan every page for annotations tagged with /PDFEditorOverlay.
+        var textMetas:  [OverlayTextBoxMeta] = []
+        var shapeMetas: [OverlayShapeMeta]   = []
+        var imageMetas: [OverlayImageMeta]   = []
+        var toRemove:   [(PDFPage, PDFAnnotation)] = []
+
         for pageIndex in 0..<document.pageCount {
+            guard let page = document.page(at: pageIndex) else { continue }
+            for annotation in page.annotations {
+                guard let raw = annotation.value(forAnnotationKey: sdkOverlayKey) as? String else { continue }
+                toRemove.append((page, annotation))
+
+                let parts = raw.split(separator: ":", maxSplits: 1)
+                guard parts.count == 2,
+                      let jsonData = Data(base64Encoded: String(parts[1])) else { continue }
+
+                let decoder = JSONDecoder()
+                switch parts[0] {
+                case "text":
+                    if let m = try? decoder.decode(OverlayTextBoxMeta.self, from: jsonData) { textMetas.append(m) }
+                case "shape":
+                    if let m = try? decoder.decode(OverlayShapeMeta.self, from: jsonData) { shapeMetas.append(m) }
+                case "image":
+                    if let m = try? decoder.decode(OverlayImageMeta.self, from: jsonData) { imageMetas.append(m) }
+                default: break
+                }
+            }
+        }
+
+        if !toRemove.isEmpty {
+            // Remove the real annotations from the in-memory document so they
+            // don't double-render with the UIKit overlay views.
+            removeRealOverlayAnnotations(toRemove)
+            clearOverlayViews()
+            importOverlayMetadata(OverlayDocumentMetadata(
+                textBoxes: textMetas, images: imageMetas, shapes: shapeMetas))
+            return
+        }
+
+        // ── Legacy fallback: blob annotation ────────────────────────────────
+        var encoded: String?
+        var blobParts: [Int: String] = [:]
+        var totalParts: Int?
+        outer: for pageIndex in 0..<document.pageCount {
             guard let page = document.page(at: pageIndex) else { continue }
             for annotation in page.annotations {
                 guard let contents = annotation.contents else { continue }
                 if contents.hasPrefix(overlayMetadataPrefix) {
                     encoded = String(contents.dropFirst(overlayMetadataPrefix.count))
-                    break
+                    break outer
                 }
                 if contents.hasPrefix(overlayMetadataPartPrefix) {
                     let tail = String(contents.dropFirst(overlayMetadataPartPrefix.count))
@@ -2088,24 +2295,25 @@ class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, PencilDraw
                           let part = Int(header[0]),
                           let total = Int(header[1]) else { continue }
                     totalParts = total
-                    parts[part] = String(components[1])
+                    blobParts[part] = String(components[1])
                 }
             }
-            if encoded != nil {
-                break
-            }
         }
-        
+
+        if encoded == nil, let totalParts, blobParts.count == totalParts {
+            encoded = (1...totalParts).compactMap { blobParts[$0] }.joined()
+        }
+
         clearOverlayViews()
-        if encoded == nil, let totalParts, parts.count == totalParts {
-            let joined = (1...totalParts).compactMap { parts[$0] }.joined()
-            encoded = joined
-        }
-        
-        guard let encoded, let data = Data(base64Encoded: encoded) else { return }
-        let decoder = JSONDecoder()
-        guard let metadata = try? decoder.decode(OverlayDocumentMetadata.self, from: data) else { return }
-        
+        guard let encoded,
+              let data = Data(base64Encoded: encoded),
+              let metadata = try? JSONDecoder().decode(OverlayDocumentMetadata.self, from: data)
+        else { return }
+        importOverlayMetadata(metadata)
+    }
+
+    func restoreOverlayMetadata(_ metadata: OverlayDocumentMetadata) {
+        clearOverlayViews()
         importOverlayMetadata(metadata)
     }
     
