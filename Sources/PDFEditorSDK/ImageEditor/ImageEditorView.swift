@@ -94,7 +94,6 @@ struct ImageFormEditorView: View {
     @State private var isShowingImagePicker = false
     @State private var imagePickerSource: ImagePickerSource = .photoLibrary
     @State private var isShowingSaveAlert = false
-    @State private var isShowingShareSheet = false
     @State private var exportedImage: UIImage?
     @State private var changesNotSaved = false
     @State private var showEditorSettings = false
@@ -165,7 +164,7 @@ struct ImageFormEditorView: View {
                 Button {
                     if let image = viewModel.exportImage() {
                         exportedImage = image
-                        isShowingShareSheet = true
+                        presentShareSheet(image: image)
                     }
                 } label: {
                     Text("Share")
@@ -183,11 +182,6 @@ struct ImageFormEditorView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(viewModel.saveStatus ?? "No status")
-        }
-        .sheet(isPresented: $isShowingShareSheet) {
-            if let exportedImage {
-                ActivityView(activityItems: [exportedImage])
-            }
         }
         .onChange(of: viewModel.textBoxFontSize) { _, _ in
             viewModel.applyTextStyleToSelected()
@@ -423,6 +417,34 @@ struct ImageFormEditorView: View {
             .fill(Color.secondary.opacity(0.25))
             .frame(width: 1, height: toolbarDividerHeight)
             .padding(.top, toolbarDividerTopPadding)
+    }
+
+    private func presentShareSheet(image: UIImage) {
+        let activityVC = UIActivityViewController(activityItems: [image], applicationActivities: nil)
+
+        guard
+            let windowScene = UIApplication.shared.connectedScenes
+                .first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene,
+            let window = windowScene.keyWindow,
+            let rootVC = window.rootViewController
+        else { return }
+
+        var topVC = rootVC
+        while let presented = topVC.presentedViewController {
+            topVC = presented
+        }
+
+        if let popover = activityVC.popoverPresentationController {
+            popover.sourceView = topVC.view
+            popover.sourceRect = CGRect(
+                x: topVC.view.bounds.midX,
+                y: topVC.view.bounds.midY,
+                width: 0, height: 0
+            )
+            popover.permittedArrowDirections = []
+        }
+
+        topVC.present(activityVC, animated: true)
     }
 
     private func toolbarChip<Content: View>(@ViewBuilder content: () -> Content) -> some View {
