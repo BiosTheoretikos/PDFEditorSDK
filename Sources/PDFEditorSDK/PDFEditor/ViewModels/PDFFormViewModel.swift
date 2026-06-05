@@ -5,10 +5,9 @@
 //  Extracted from PDFEditorView.swift
 //
 
-import SwiftUI
+import Observation
 import PDFKit
 import UIKit
-import CoreText
 
 // MARK: - View Model
 @MainActor
@@ -64,7 +63,7 @@ class PDFFormViewModel {
             persistPreferences()
         }
     }
-    var previousTool: EditorTool? = nil
+    var previousTool: EditorTool?
     var displaySettings: EditorDisplaySettings {
         didSet {
             displaySettings.apply(to: &preferences)
@@ -109,10 +108,10 @@ class PDFFormViewModel {
         self.editableSaveHandler = editableSaveHandler
         self.flattenedExportHandler = flattenedExportHandler
         self.shouldHighlightFormField = shouldHighlightFormField
-        
+
         let prefs = EditorPreferences.load()
         self.preferences = prefs
-        
+
         self.drawingSettings = DrawingAnnotationSettings(preferences: prefs)
         self.textSettings = TextAnnotationSettings(preferences: prefs)
         self.shapeSettings = ShapeAnnotationSettings(preferences: prefs)
@@ -122,9 +121,8 @@ class PDFFormViewModel {
         self.lineWidthControls = LineWidthControlSettings(preferences: prefs)
 
         _ = loadPDF(from: documentURL)
-        
     }
-    
+
     var selectedOverlayKind: SelectedOverlayKind?
 
     var isDrawingMode: Bool { activeTool == .draw }
@@ -133,16 +131,16 @@ class PDFFormViewModel {
     var isSelectMode: Bool { activeTool == .select }
     var isShapeMode: Bool { activeTool == .shape }
     var isPencilKitMode: Bool { activeTool == .pencilKit }
-    
+
     func setTool(_ tool: EditorTool) {
         // Tapping an already-active tool returns to select mode
         if activeTool == tool, tool != .select {
             previousTool = activeTool
             activeTool = .select
             pdfView?.endOverlayTextEditing()
-
             return
         }
+
         if tool == .shape {
             previousTool = activeTool
             activeTool = .shape
@@ -152,6 +150,7 @@ class PDFFormViewModel {
             pdfView?.deselectOverlaySelection()
             return
         }
+
         if tool == .pencilKit {
             previousTool = activeTool
             activeTool = .pencilKit
@@ -161,81 +160,85 @@ class PDFFormViewModel {
             pdfView?.deselectOverlaySelection()
             return
         }
+
         if tool != .text {
             pdfView?.endOverlayTextEditing()
         }
+
         previousTool = activeTool
         activeTool = tool
+
         if tool != .select {
             hasSelectedInkAnnotation = false
             pdfView?.deselectInkAnnotation()
             pdfView?.deselectOverlaySelection()
         }
-        }
+    }
 
     func applyShapeStyleToSelected() {
         pdfView?.applyShapeStyleToSelected(kind: shapeSettings.kind, strokeColor: shapeSettings.strokeColor, lineWidth: shapeSettings.lineWidth)
-        }
+    }
 
     func updateShapeSettings(_ update: (inout ShapeAnnotationSettings) -> Void) {
         update(&shapeSettings)
         guard activeTool == .select else { return }
         applyShapeStyleToSelected()
-        }
+    }
 
     func applyImageBorderToSelected() {
         pdfView?.applyImageBorderToSelected(borderWidth: imageSettings.borderWidth, borderColor: imageSettings.borderColor)
-        }
+    }
 
     func applyTextBorderToSelected() {
         pdfView?.applyTextBorderToSelected(borderWidth: selectedTextBoxBorder.width, borderColor: selectedTextBoxBorder.color)
-        }
+    }
 
     /// Updates width + canvas; use from toolbar instead of assigning `selectedTextBoxBorder.width` so selection sync does not go through `.onChange`.
     func commitSelectedTextBoxBorderWidth(_ width: CGFloat) {
         selectedTextBoxBorder.width = width
         applyTextBorderToSelected()
-        }
+    }
 
     /// Updates color + canvas; use from toolbar instead of assigning `selectedTextBoxBorder.color` so selection sync does not go through `.onChange`.
     func commitSelectedTextBoxBorderColor(_ color: UIColor) {
         selectedTextBoxBorder.color = color
         applyTextBorderToSelected()
-        }
+    }
 
     func commitImageBorderWidth(_ width: CGFloat) {
-            imageSettings.borderWidth = width
+        imageSettings.borderWidth = width
         applyImageBorderToSelected()
-        }
+    }
 
     func commitImageBorderColor(_ color: UIColor) {
-            imageSettings.borderColor = color
+        imageSettings.borderColor = color
         applyImageBorderToSelected()
-        }
+    }
+
     func toggleScrollLock() {
         pageScrollLocked.toggle()
-        }
-    
+    }
+
     func highlightSelectedText() {
         pdfView?.highlightCurrentSelection()
-        }
-    
+    }
+
     func addAnnotation(_ annotation: PDFAnnotation) {
         didMakeChange(.annotation(annotation))
-        }
-    
+    }
+
     func recordFormFieldChange(annotation: PDFAnnotation, previousValue: String?, newValue: String?) {
         didMakeChange(.formFieldChange(annotation: annotation, previousValue: previousValue, newValue: newValue))
-        }
-    
+    }
+
     func addImage(_ image: UIImage) {
         pdfView?.addOverlayImage(image)
-        }
+    }
 
     func updateTextSettings(_ update: (inout TextAnnotationSettings) -> Void) {
         update(&textSettings)
         applyTextStyleToSelectedTextBox()
-        }
+    }
 
     func applyTextStyleToSelectedTextBox() {
         pdfView?.applyTextStyleToSelectedTextBox(
@@ -246,7 +249,8 @@ class PDFFormViewModel {
             textAlignment: textSettings.textAlignment,
             verticalAlignment: textSettings.verticalAlignment
         )
-        }
+    }
+
     // Call this whenever a fresh change is made to clear the redo stack
     func didMakeChange(_ action: UndoAction) {
         undoStack.append(action)
@@ -254,30 +258,30 @@ class PDFFormViewModel {
             undoStack.removeFirst(undoStack.count - maxUndoActions)
         }
         redoStack.removeAll()
-        }
-    
+    }
+
     var canUndo: Bool { !undoStack.isEmpty }
     var canRedo: Bool { !redoStack.isEmpty }
-    
+
     func deleteSelectedSelection() {
         if hasSelectedInkAnnotation {
             deleteSelectedInkAnnotation()
         } else {
             pdfView?.deleteSelectedOverlayObject()
         }
-        }
-    
+    }
+
     func deleteSelectedInkAnnotation() {
         guard let pdfView, let annotation = pdfView.selectedInkAnnotation,
               let page = annotation.page else { return }
-        page.removeAnnotation(annotation) 
+        page.removeAnnotation(annotation)
         pdfView.deselectInkAnnotation()
         didMakeChange(.deleteInkAnnotation(annotation: annotation, page: page))
-        }
-    
+    }
+
     func flushActiveFormFieldChangesIfNeeded() {
         pdfView?.flushPendingFormFieldUndoTracking()
-        }
+    }
 }
 
 // MARK: - PencilGestureHandler Conformance

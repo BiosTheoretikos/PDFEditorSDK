@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import PDFKit
 import UIKit
 
 private enum EditorPopover: Identifiable {
