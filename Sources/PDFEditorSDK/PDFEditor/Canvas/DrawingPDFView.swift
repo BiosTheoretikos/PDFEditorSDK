@@ -8,6 +8,61 @@
 import PDFKit
 import UIKit
 
+private struct FormFieldEditState {
+    private var baselineValues: [String: String?] = [:]
+    private(set) var activeAnnotation: PDFAnnotation?
+    private(set) var activeFieldName: String?
+    private(set) var activeInitialValue: String?
+    var isApplyingUndoRedo = false
+    var isFullRefreshScheduled = false
+
+    var hasActiveSession: Bool {
+        activeAnnotation != nil
+    }
+
+    func isTrackingDifferentSession(annotation: PDFAnnotation, fieldName: String) -> Bool {
+        activeAnnotation !== annotation || activeFieldName != fieldName
+    }
+
+    func cachedBaseline(for fieldName: String) -> String?? {
+        baselineValues[fieldName]
+    }
+
+    mutating func cacheBaselineIfNeeded(fieldName: String, value: String?) {
+        if baselineValues[fieldName] == nil {
+            baselineValues[fieldName] = value
+        }
+    }
+
+    mutating func beginSession(annotation: PDFAnnotation, fieldName: String, currentValue: String?) {
+        cacheBaselineIfNeeded(fieldName: fieldName, value: currentValue)
+        activeAnnotation = annotation
+        activeFieldName = fieldName
+        activeInitialValue = baselineValues[fieldName] ?? currentValue
+    }
+
+    mutating func updateBaseline(_ value: String?, for fieldName: String) {
+        baselineValues[fieldName] = value
+    }
+
+    mutating func updateActiveInitialValue(_ value: String?) {
+        activeInitialValue = value
+    }
+
+    mutating func syncBaseline(for annotation: PDFAnnotation) {
+        guard let fieldName = annotation.fieldName else { return }
+        updateBaseline(annotation.widgetStringValue, for: fieldName)
+        if activeFieldName == fieldName {
+            activeInitialValue = annotation.widgetStringValue
+        }
+    }
+
+    mutating func clearActiveSession() {
+        activeAnnotation = nil
+        activeFieldName = nil
+        activeInitialValue = nil
+    }
+}
 
 // MARK: - Drawing PDF View
 final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, PencilDrawingGestureDelegate {
@@ -396,13 +451,7 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
     private let overlayMetadataPrefix     = PDFOverlayRenderer.overlayMetadataPrefix
     private let overlayMetadataPartPrefix = PDFOverlayRenderer.overlayMetadataPartPrefix
     
-    // Form field tracking
-    private var formFieldStates: [String: String?] = [:]
-    private var activeFormFieldAnnotation: PDFAnnotation?
-    private var activeFormFieldName: String?
-    private var activeFormFieldInitialValue: String?
-    private var isApplyingFormUndoRedo = false
-    private var fullFormWidgetRefreshScheduled = false
+    private var formFieldEditState = FormFieldEditState()
 
     // Keyboard offset preservation for text box editing
     private var savedTextBoxContentOffset: CGPoint?
@@ -859,8 +908,11 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
         guard annotation.type == PDFAnnotationSubtype.widget.rawValue else { return }
         let wt = annotation.widgetFieldType
         if wt == .text || wt == .choice {
-            if let fieldName = annotation.fieldName, formFieldStates[fieldName] == nil {
-                formFieldStates[fieldName] = annotation.widgetStringValue
+            if let fieldName = annotation.fieldName {
+                formFieldEditState.cacheBaselineIfNeeded(
+                    fieldName: fieldName,
+                    value: annotation.widgetStringValue
+                )
             }
             // PDFKit often focuses the widget after this notification; disable double-tap
             // zoom immediately so it does not beat UITextField word-selection gestures.
@@ -2793,24 +2845,22 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
     }
 
     private func beginFormFieldEditSession(for textInput: UIView) {
-        guard !isApplyingFormUndoRedo else { return }
+        guard !formFieldEditState.isApplyingUndoRedo else { return }
         guard let annotation = formWidgetAnnotationOwningFirstResponderIfKnown(textInput),
               let fieldName = annotation.fieldName else { return }
         let wt = annotation.widgetFieldType
         guard wt == .text || wt == .choice else { return }
 
-        if activeFormFieldAnnotation !== annotation || activeFormFieldName != fieldName {
+        if formFieldEditState.isTrackingDifferentSession(annotation: annotation, fieldName: fieldName) {
             recordActiveFormFieldChange(resetSession: false)
         }
 
         let currentValue = annotation.widgetStringValue
-        if formFieldStates[fieldName] == nil {
-            formFieldStates[fieldName] = currentValue
-        }
-
-        activeFormFieldAnnotation = annotation
-        activeFormFieldName = fieldName
-        activeFormFieldInitialValue = formFieldStates[fieldName] ?? currentValue
+        formFieldEditState.beginSession(
+            annotation: annotation,
+            fieldName: fieldName,
+            currentValue: currentValue
+        )
     }
 
     @discardableResult
@@ -2853,15 +2903,15 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
     }
 
     private func recordActiveFormFieldChange(resetSession: Bool) {
-        guard !isApplyingFormUndoRedo else { return }
-        guard let annotation = activeFormFieldAnnotation,
-              let fieldName = activeFormFieldName else { return }
+        guard !formFieldEditState.isApplyingUndoRedo else { return }
+        guard let annotation = formFieldEditState.activeAnnotation,
+              let fieldName = formFieldEditState.activeFieldName else { return }
         let currentValue = annotation.widgetStringValue
-        let previousValue = activeFormFieldInitialValue
+        let previousValue = formFieldEditState.activeInitialValue
         guard previousValue != currentValue else {
-            formFieldStates[fieldName] = currentValue
+            formFieldEditState.updateBaseline(currentValue, for: fieldName)
             if resetSession {
-                activeFormFieldInitialValue = currentValue
+                formFieldEditState.updateActiveInitialValue(currentValue)
             } else {
                 clearActiveFormFieldEditSession()
             }
@@ -2873,35 +2923,29 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
             previousValue: previousValue,
             newValue: currentValue
         )
-        formFieldStates[fieldName] = currentValue
+        formFieldEditState.updateBaseline(currentValue, for: fieldName)
 
         if resetSession {
-            activeFormFieldInitialValue = currentValue
+            formFieldEditState.updateActiveInitialValue(currentValue)
         } else {
             clearActiveFormFieldEditSession()
         }
     }
 
     private func clearActiveFormFieldEditSession() {
-        activeFormFieldAnnotation = nil
-        activeFormFieldName = nil
-        activeFormFieldInitialValue = nil
+        formFieldEditState.clearActiveSession()
     }
 
     func beginApplyingFormUndoRedo() {
-        isApplyingFormUndoRedo = true
+        formFieldEditState.isApplyingUndoRedo = true
     }
 
     func endApplyingFormUndoRedo() {
-        isApplyingFormUndoRedo = false
+        formFieldEditState.isApplyingUndoRedo = false
     }
 
     func syncFormFieldBaseline(for annotation: PDFAnnotation) {
-        guard let fieldName = annotation.fieldName else { return }
-        formFieldStates[fieldName] = annotation.widgetStringValue
-        if activeFormFieldName == fieldName {
-            activeFormFieldInitialValue = annotation.widgetStringValue
-        }
+        formFieldEditState.syncBaseline(for: annotation)
     }
 
     func refreshFormWidgetAppearance(for annotation: PDFAnnotation) {
@@ -2970,11 +3014,11 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
     }
 
     func scheduleFullFormWidgetAppearanceRefresh() {
-        guard !fullFormWidgetRefreshScheduled else { return }
-        fullFormWidgetRefreshScheduled = true
+        guard !formFieldEditState.isFullRefreshScheduled else { return }
+        formFieldEditState.isFullRefreshScheduled = true
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            self.fullFormWidgetRefreshScheduled = false
+            self.formFieldEditState.isFullRefreshScheduled = false
             self.refreshAllFormWidgetAppearances()
         }
     }
@@ -3061,7 +3105,7 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
             }
         } else if notification.name == UITextField.textDidChangeNotification ||
                     notification.name == UITextView.textDidChangeNotification {
-            if activeFormFieldAnnotation == nil {
+            if !formFieldEditState.hasActiveSession {
                 beginFormFieldEditSession(for: view)
             }
             commitFormWidgetText(from: view)
@@ -3189,14 +3233,14 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
             for annotation in page.annotations {
                 if let fieldName = annotation.fieldName,
                    annotation.widgetFieldType == .text || annotation.widgetFieldType == .choice {
-                    formFieldStates[fieldName] = annotation.widgetStringValue
+                    formFieldEditState.updateBaseline(annotation.widgetStringValue, for: fieldName)
                 }
             }
         }
     }
     
     private func recordFormFieldChanges() {
-        guard !isApplyingFormUndoRedo else { return }
+        guard !formFieldEditState.isApplyingUndoRedo else { return }
         guard let document = self.document else { return }
         for pageIndex in 0..<document.pageCount {
             guard let page = document.page(at: pageIndex) else { continue }
@@ -3204,8 +3248,8 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
                 guard let fieldName = annotation.fieldName,
                       annotation.widgetFieldType == .text || annotation.widgetFieldType == .choice else { continue }
                 let currentValue = annotation.widgetStringValue
-                guard let previousValue = formFieldStates[fieldName] else {
-                    formFieldStates[fieldName] = currentValue
+                guard let previousValue = formFieldEditState.cachedBaseline(for: fieldName) else {
+                    formFieldEditState.updateBaseline(currentValue, for: fieldName)
                     continue
                 }
                 guard previousValue != currentValue else { continue }
@@ -3214,7 +3258,7 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
                     previousValue: previousValue,
                     newValue: currentValue
                 )
-                formFieldStates[fieldName] = currentValue
+                formFieldEditState.updateBaseline(currentValue, for: fieldName)
             }
         }
     }
