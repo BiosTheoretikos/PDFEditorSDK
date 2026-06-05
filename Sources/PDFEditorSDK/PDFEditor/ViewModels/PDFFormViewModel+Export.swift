@@ -3,7 +3,7 @@
 //  PDFEditorSDK
 //
 
-import SwiftUI
+import Foundation
 import PDFKit
 import UIKit
 
@@ -63,7 +63,7 @@ extension PDFFormViewModel {
             throw wrappedError
         }
     }
-    
+
     /// Exports the document in its editable form for sharing.
     ///
     /// Always writes to a fresh temp URL so the system share sheet can read the
@@ -148,7 +148,7 @@ extension PDFFormViewModel {
             throw wrappedError
         }
     }
-    
+
     func renderFlattenedPDF(
         document: PDFDocument,
         metadata: OverlayDocumentMetadata,

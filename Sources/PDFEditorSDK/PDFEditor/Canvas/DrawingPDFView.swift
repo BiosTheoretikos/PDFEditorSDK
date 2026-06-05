@@ -5,13 +5,12 @@
 //  Extracted from PDFEditorView.swift
 //
 
-import SwiftUI
 import PDFKit
 import UIKit
 
 
 // MARK: - Drawing PDF View
-class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, PencilDrawingGestureDelegate {
+final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, PencilDrawingGestureDelegate {
     
     // MARK: - Properties
     weak var formViewModel: PDFFormViewModel?
@@ -3519,4 +3518,3 @@ class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, PencilDraw
         return super.gestureRecognizerShouldBegin(gestureRecognizer)
     }
 }
-

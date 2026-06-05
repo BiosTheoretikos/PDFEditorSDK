@@ -6,8 +6,28 @@
 //
 
 import SwiftUI
-import PDFKit
 import UIKit
+
+private enum EditorPopover: Identifiable {
+    case shareOptions
+    case drawOptions
+    case eraserOptions
+    case textOptions
+    case shapeOptions
+    case imageBorderOptions
+    case selectedImageBorder
+    case selectedTextBorder
+    case selectedShapeStrokeWidth
+    case textFontSize
+    case editorSettings
+
+    var id: Self { self }
+}
+
+private struct PDFShareItem: Identifiable {
+    let id = UUID()
+    let url: URL
+}
 
 struct PDFFormEditorView: View {
     @Bindable var viewModel: PDFFormViewModel
@@ -24,21 +44,12 @@ struct PDFFormEditorView: View {
     @State private var isShowingExportAlert = false
     @State private var isShowingImagePicker = false
     @State private var imagePickerSource: ImagePickerSource = .photoLibrary
-    @State private var showShareOptions = false
+    @State private var activePopover: EditorPopover?
+    @State private var shareItem: PDFShareItem?
     @State private var isShowingInsertPageSheet = false
     @State private var insertPageIndex = 0
     @State private var isShowingRemovePageAlert = false
-    @State private var showEditorSettings = false
-    @State private var showDrawOptions = false
-    @State private var showTextOptions = false
-    @State private var showShapeOptions = false
-    @State private var showEraserOptions = false
     @State private var showAddImageSourceDialog = false
-    @State private var showImageBorderOptions = false
-    @State private var showSelectShapeLineWidthPopover = false
-    @State private var showSelectImageBorderWidthPopover = false
-    @State private var showSelectTextBorderWidthPopover = false
-    @State private var showTextToolbarFontSizePopover = false
     @State private var changesNotSaved = false
 
     var body: some View {
@@ -51,137 +62,11 @@ struct PDFFormEditorView: View {
             .sheet(isPresented: $isShowingInsertPageSheet) {
                 insertPageView
             }
-            .popover(isPresented: $showDrawOptions, arrowEdge: .bottom) {
-                DrawToolOptionsView(
-                    inkColor: Binding(
-                        get: { Color(viewModel.drawingSettings.inkColor) },
-                        set: { viewModel.drawingSettings.inkColor = UIColor($0) }
-                    ),
-                    inkLineWidth: $viewModel.drawingSettings.lineWidth,
-                    lineWidthStep: viewModel.lineWidthControls.step,
-                    lineWidthMax: viewModel.lineWidthControls.max
-                )
+            .sheet(item: $shareItem) { item in
+                PDFShareSheet(url: item.url)
             }
-            .popover(isPresented: $showEraserOptions, arrowEdge: .bottom) {
-                EraserToolOptionsView(eraserRadius: $viewModel.drawingSettings.eraserRadius)
-            }
-            .popover(isPresented: $showTextOptions, arrowEdge: .bottom) {
-                TextToolOptionsView(
-                    textColor: Binding(
-                        get: { Color(viewModel.textSettings.textColor) },
-                        set: { viewModel.textSettings.textColor = UIColor($0) }
-                    ),
-                    backgroundColor: Binding(
-                        get: { Color(viewModel.textSettings.backgroundColor) },
-                        set: { viewModel.textSettings.backgroundColor = UIColor($0) }
-                    ),
-                    fontSize: $viewModel.textSettings.fontSize,
-                    isBold: $viewModel.textSettings.isBold,
-                    textAlignment: $viewModel.textSettings.textAlignment,
-                    verticalAlignment: $viewModel.textSettings.verticalAlignment,
-                    borderWidth: $viewModel.textSettings.borderWidth,
-                    borderColor: Binding(
-                        get: { Color(viewModel.textSettings.borderColor) },
-                        set: { viewModel.textSettings.borderColor = UIColor($0) }
-                    ),
-                    lineWidthStep: viewModel.lineWidthControls.step,
-                    lineWidthMax: viewModel.lineWidthControls.max
-                )
-            }
-            .popover(isPresented: $showShapeOptions, arrowEdge: .bottom) {
-                ShapeToolOptionsView(
-                    shapeKind: $viewModel.shapeSettings.kind,
-                    strokeColor: Binding(
-                        get: { Color(viewModel.shapeSettings.strokeColor) },
-                        set: { viewModel.shapeSettings.strokeColor = UIColor($0) }
-                    ),
-                    lineWidth: $viewModel.shapeSettings.lineWidth,
-                    lineWidthStep: viewModel.lineWidthControls.step,
-                    lineWidthMax: viewModel.lineWidthControls.max
-                )
-            }
-            .popover(isPresented: $showImageBorderOptions, arrowEdge: .bottom) {
-                ImageBorderToolOptionsView(
-                    borderWidth: Binding(
-                        get: { viewModel.imageSettings.borderWidth },
-                        set: { viewModel.commitImageBorderWidth($0) }
-                    ),
-                    borderColor: Binding(
-                        get: { Color(viewModel.imageSettings.borderColor) },
-                        set: { viewModel.commitImageBorderColor(UIColor($0)) }
-                    ),
-                    lineWidthStep: viewModel.lineWidthControls.step,
-                    lineWidthMax: viewModel.lineWidthControls.max
-                )
-            }
-            .popover(isPresented: $showSelectImageBorderWidthPopover, arrowEdge: .bottom) {
-                ToolbarBorderWidthColorPanel(
-                    width: Binding(
-                        get: { viewModel.imageSettings.borderWidth },
-                        set: { viewModel.commitImageBorderWidth($0) }
-                    ),
-                    color: Binding(
-                        get: { Color(viewModel.imageSettings.borderColor) },
-                        set: { viewModel.commitImageBorderColor(UIColor($0)) }
-                    ),
-                    step: viewModel.lineWidthControls.step,
-                    max: viewModel.lineWidthControls.max,
-                    title: "Image Border"
-                )
-            }
-            .popover(isPresented: $showSelectTextBorderWidthPopover, arrowEdge: .bottom) {
-                ToolbarBorderWidthColorPanel(
-                    width: Binding(
-                        get: { viewModel.selectedTextBoxBorder.width },
-                        set: { viewModel.commitSelectedTextBoxBorderWidth($0) }
-                    ),
-                    color: Binding(
-                        get: { Color(viewModel.selectedTextBoxBorder.color) },
-                        set: { viewModel.commitSelectedTextBoxBorderColor(UIColor($0)) }
-                    ),
-                    step: viewModel.lineWidthControls.step,
-                    max: viewModel.lineWidthControls.max,
-                    title: "Text Box Border"
-                )
-            }
-            .popover(isPresented: $showSelectShapeLineWidthPopover, arrowEdge: .bottom) {
-                ToolbarLineWidthStepperPanel(
-                    width: $viewModel.shapeSettings.lineWidth,
-                    step: viewModel.lineWidthControls.step,
-                    max: viewModel.lineWidthControls.max,
-                    allowsZero: false,
-                    title: "Stroke Width"
-                )
-            }
-            .popover(isPresented: $showTextToolbarFontSizePopover, arrowEdge: .bottom) {
-                ToolbarFontSizeStepperPanel(fontSize: $viewModel.textSettings.fontSize)
-            }
-            .popover(isPresented: $showEditorSettings, arrowEdge: .bottom) {
-                EditorSettingsView(
-                    drawWithFinger: $viewModel.pencilInput.drawWithFinger,
-                    pencilOnlyAnnotations: $viewModel.pencilInput.pencilOnlyAnnotations,
-                    pencilDoubleTapAction: $viewModel.pencilInput.doubleTapAction,
-                    pencilSqueezeAction: $viewModel.pencilInput.squeezeAction,
-                    pencilDoubleSqueezeAction: $viewModel.pencilInput.doubleSqueezeAction
-                )
-            }
-            .onChange(of: viewModel.textSettings.fontSize) { _, _ in viewModel.applyTextStyleToSelectedTextBox() }
-            .onChange(of: viewModel.textSettings.isBold) { _, _ in viewModel.applyTextStyleToSelectedTextBox() }
-            .onChange(of: viewModel.textSettings.textColor) { _, _ in viewModel.applyTextStyleToSelectedTextBox() }
-            .onChange(of: viewModel.textSettings.backgroundColor) { _, _ in viewModel.applyTextStyleToSelectedTextBox() }
-            .onChange(of: viewModel.textSettings.textAlignment) { _, _ in viewModel.applyTextStyleToSelectedTextBox() }
-            .onChange(of: viewModel.textSettings.verticalAlignment) { _, _ in viewModel.applyTextStyleToSelectedTextBox() }
-            .onChange(of: viewModel.shapeSettings.kind) { _, _ in
-                guard viewModel.activeTool == .select else { return }
-                viewModel.applyShapeStyleToSelected()
-            }
-            .onChange(of: viewModel.shapeSettings.strokeColor) { _, _ in
-                guard viewModel.activeTool == .select else { return }
-                viewModel.applyShapeStyleToSelected()
-            }
-            .onChange(of: viewModel.shapeSettings.lineWidth) { _, _ in
-                guard viewModel.activeTool == .select else { return }
-                viewModel.applyShapeStyleToSelected()
+            .popover(item: $activePopover, arrowEdge: .bottom) { popover in
+                popoverContent(for: popover)
             }
             .alert("Unsaved Changes", isPresented: $changesNotSaved) {
                 Button("Save Changes") {
@@ -339,13 +224,7 @@ struct PDFFormEditorView: View {
             }
 
             Button("Share") {
-                showShareOptions.toggle()
-            }
-            .popover(isPresented: $showShareOptions, arrowEdge: .top) {
-                ShareExportPopover { mode in
-                    showShareOptions = false
-                    sharePDF(mode: mode)
-                }
+                activePopover = .shareOptions
             }
         }
     }
@@ -388,30 +267,203 @@ struct PDFFormEditorView: View {
     }
 
     @ViewBuilder
+    private func popoverContent(for popover: EditorPopover) -> some View {
+        switch popover {
+        case .shareOptions:
+            ShareExportPopover { mode in
+                activePopover = nil
+                sharePDF(mode: mode)
+            }
+
+        case .drawOptions:
+            DrawToolOptionsView(
+                inkColor: Binding(
+                    get: { Color(viewModel.drawingSettings.inkColor) },
+                    set: { viewModel.drawingSettings.inkColor = UIColor($0) }
+                ),
+                inkLineWidth: $viewModel.drawingSettings.lineWidth,
+                lineWidthStep: viewModel.lineWidthControls.step,
+                lineWidthMax: viewModel.lineWidthControls.max
+            )
+
+        case .eraserOptions:
+            EraserToolOptionsView(eraserRadius: $viewModel.drawingSettings.eraserRadius)
+
+        case .textOptions:
+            TextToolOptionsView(
+                textColor: Binding(
+                    get: { Color(viewModel.textSettings.textColor) },
+                    set: { newValue in
+                        viewModel.updateTextSettings { $0.textColor = UIColor(newValue) }
+                    }
+                ),
+                backgroundColor: Binding(
+                    get: { Color(viewModel.textSettings.backgroundColor) },
+                    set: { newValue in
+                        viewModel.updateTextSettings { $0.backgroundColor = UIColor(newValue) }
+                    }
+                ),
+                fontSize: Binding(
+                    get: { viewModel.textSettings.fontSize },
+                    set: { newValue in
+                        viewModel.updateTextSettings { $0.fontSize = newValue }
+                    }
+                ),
+                isBold: Binding(
+                    get: { viewModel.textSettings.isBold },
+                    set: { newValue in
+                        viewModel.updateTextSettings { $0.isBold = newValue }
+                    }
+                ),
+                textAlignment: Binding(
+                    get: { viewModel.textSettings.textAlignment },
+                    set: { newValue in
+                        viewModel.updateTextSettings { $0.textAlignment = newValue }
+                    }
+                ),
+                verticalAlignment: Binding(
+                    get: { viewModel.textSettings.verticalAlignment },
+                    set: { newValue in
+                        viewModel.updateTextSettings { $0.verticalAlignment = newValue }
+                    }
+                ),
+                borderWidth: $viewModel.textSettings.borderWidth,
+                borderColor: Binding(
+                    get: { Color(viewModel.textSettings.borderColor) },
+                    set: { viewModel.textSettings.borderColor = UIColor($0) }
+                ),
+                lineWidthStep: viewModel.lineWidthControls.step,
+                lineWidthMax: viewModel.lineWidthControls.max
+            )
+
+        case .shapeOptions:
+            ShapeToolOptionsView(
+                shapeKind: Binding(
+                    get: { viewModel.shapeSettings.kind },
+                    set: { newValue in
+                        viewModel.updateShapeSettings { $0.kind = newValue }
+                    }
+                ),
+                strokeColor: Binding(
+                    get: { Color(viewModel.shapeSettings.strokeColor) },
+                    set: { newValue in
+                        viewModel.updateShapeSettings { $0.strokeColor = UIColor(newValue) }
+                    }
+                ),
+                lineWidth: Binding(
+                    get: { viewModel.shapeSettings.lineWidth },
+                    set: { newValue in
+                        viewModel.updateShapeSettings { $0.lineWidth = newValue }
+                    }
+                ),
+                lineWidthStep: viewModel.lineWidthControls.step,
+                lineWidthMax: viewModel.lineWidthControls.max
+            )
+
+        case .imageBorderOptions:
+            ImageBorderToolOptionsView(
+                borderWidth: Binding(
+                    get: { viewModel.imageSettings.borderWidth },
+                    set: { viewModel.commitImageBorderWidth($0) }
+                ),
+                borderColor: Binding(
+                    get: { Color(viewModel.imageSettings.borderColor) },
+                    set: { viewModel.commitImageBorderColor(UIColor($0)) }
+                ),
+                lineWidthStep: viewModel.lineWidthControls.step,
+                lineWidthMax: viewModel.lineWidthControls.max
+            )
+
+        case .selectedImageBorder:
+            ToolbarBorderWidthColorPanel(
+                width: Binding(
+                    get: { viewModel.imageSettings.borderWidth },
+                    set: { viewModel.commitImageBorderWidth($0) }
+                ),
+                color: Binding(
+                    get: { Color(viewModel.imageSettings.borderColor) },
+                    set: { viewModel.commitImageBorderColor(UIColor($0)) }
+                ),
+                step: viewModel.lineWidthControls.step,
+                max: viewModel.lineWidthControls.max,
+                title: "Image Border"
+            )
+
+        case .selectedTextBorder:
+            ToolbarBorderWidthColorPanel(
+                width: Binding(
+                    get: { viewModel.selectedTextBoxBorder.width },
+                    set: { viewModel.commitSelectedTextBoxBorderWidth($0) }
+                ),
+                color: Binding(
+                    get: { Color(viewModel.selectedTextBoxBorder.color) },
+                    set: { viewModel.commitSelectedTextBoxBorderColor(UIColor($0)) }
+                ),
+                step: viewModel.lineWidthControls.step,
+                max: viewModel.lineWidthControls.max,
+                title: "Text Box Border"
+            )
+
+        case .selectedShapeStrokeWidth:
+            ToolbarLineWidthStepperPanel(
+                width: Binding(
+                    get: { viewModel.shapeSettings.lineWidth },
+                    set: { newValue in
+                        viewModel.updateShapeSettings { $0.lineWidth = newValue }
+                    }
+                ),
+                step: viewModel.lineWidthControls.step,
+                max: viewModel.lineWidthControls.max,
+                allowsZero: false,
+                title: "Stroke Width"
+            )
+
+        case .textFontSize:
+            ToolbarFontSizeStepperPanel(
+                fontSize: Binding(
+                    get: { viewModel.textSettings.fontSize },
+                    set: { newValue in
+                        viewModel.updateTextSettings { $0.fontSize = newValue }
+                    }
+                )
+            )
+
+        case .editorSettings:
+            EditorSettingsView(
+                drawWithFinger: $viewModel.pencilInput.drawWithFinger,
+                pencilOnlyAnnotations: $viewModel.pencilInput.pencilOnlyAnnotations,
+                pencilDoubleTapAction: $viewModel.pencilInput.doubleTapAction,
+                pencilSqueezeAction: $viewModel.pencilInput.squeezeAction,
+                pencilDoubleSqueezeAction: $viewModel.pencilInput.doubleSqueezeAction
+            )
+        }
+    }
+
+    @ViewBuilder
     private var editorMenuItems: some View {
         Section("Tool Options") {
             Button {
-                showDrawOptions = true
+                activePopover = .drawOptions
             } label: {
                 Label("Draw Settings", systemImage: "paintbrush.pointed")
             }
             Button {
-                showEraserOptions = true
+                activePopover = .eraserOptions
             } label: {
                 Label("Eraser Settings", systemImage: "circle.dotted")
             }
             Button {
-                showTextOptions = true
+                activePopover = .textOptions
             } label: {
                 Label("Text Settings", systemImage: "textformat")
             }
             Button {
-                showShapeOptions = true
+                activePopover = .shapeOptions
             } label: {
                 Label("Shape Settings", systemImage: "square.on.circle")
             }
             Button {
-                showImageBorderOptions = true
+                activePopover = .imageBorderOptions
             } label: {
                 Label("Image Border", systemImage: "square.dashed")
             }
@@ -470,7 +522,7 @@ struct PDFFormEditorView: View {
 
         Section {
             Button {
-                showEditorSettings = true
+                activePopover = .editorSettings
             } label: {
                 Label("Editor Settings", systemImage: "gearshape")
             }
@@ -481,17 +533,17 @@ struct PDFFormEditorView: View {
     private var selectionMenuItems: some View {
         if viewModel.selectedOverlayKind == .textBox {
             Button {
-                showTextOptions = true
+                activePopover = .textOptions
             } label: {
                 Label("Text Settings", systemImage: "textformat")
             }
             Button {
-                showTextToolbarFontSizePopover = true
+                activePopover = .textFontSize
             } label: {
                 Label("Font Size", systemImage: "textformat.size")
             }
             Button {
-                showSelectTextBorderWidthPopover = true
+                activePopover = .selectedTextBorder
             } label: {
                 Label("Text Box Border", systemImage: "square.dashed")
             }
@@ -499,12 +551,12 @@ struct PDFFormEditorView: View {
 
         if viewModel.selectedOverlayKind == .shape {
             Button {
-                showShapeOptions = true
+                activePopover = .shapeOptions
             } label: {
                 Label("Shape Settings", systemImage: iconName(for: viewModel.shapeSettings.kind))
             }
             Button {
-                showSelectShapeLineWidthPopover = true
+                activePopover = .selectedShapeStrokeWidth
             } label: {
                 Label("Stroke Width", systemImage: "lineweight")
             }
@@ -512,7 +564,7 @@ struct PDFFormEditorView: View {
 
         if viewModel.selectedOverlayKind == .image {
             Button {
-                showSelectImageBorderWidthPopover = true
+                activePopover = .selectedImageBorder
             } label: {
                 Label("Image Border", systemImage: "square.dashed")
             }
@@ -559,7 +611,7 @@ struct PDFFormEditorView: View {
             case .original:
                 url = try viewModel.exportEditablePDF()
             }
-            PDFSharePresenter.present(url: url)
+            shareItem = PDFShareItem(url: url)
         } catch {
             viewModel.exportStatus = error.localizedDescription
             isShowingExportAlert = true

@@ -3,8 +3,6 @@
 //  PDFEditorSDK
 //
 
-import SwiftUI
-import PDFKit
 import UIKit
 
 final class ImageBoxView: UIView {
@@ -295,4 +293,3 @@ final class ImageBoxView: UIView {
 }
 
 // MARK: - ShapeBoxView
-

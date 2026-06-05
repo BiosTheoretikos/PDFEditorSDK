@@ -3,8 +3,6 @@
 //  PDFEditorSDK
 //
 
-import SwiftUI
-import PDFKit
 import UIKit
 
 struct DrawingAnnotationSettings {

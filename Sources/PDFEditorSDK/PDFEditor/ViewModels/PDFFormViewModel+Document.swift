@@ -3,7 +3,7 @@
 //  PDFEditorSDK
 //
 
-import SwiftUI
+import Foundation
 import PDFKit
 import UIKit
 
@@ -32,7 +32,7 @@ extension PDFFormViewModel {
             currentPageIndex = 0
         }
     }
-    
+
     func goToPage(index: Int) {
         guard let document = pdfDocument, index >= 0, index < document.pageCount else { return }
         if let page = document.page(at: index) {
@@ -40,15 +40,15 @@ extension PDFFormViewModel {
             currentPageIndex = index
         }
     }
-    
+
     func goToNextPage() {
         goToPage(index: currentPageIndex + 1)
     }
-    
+
     func goToPreviousPage() {
         goToPage(index: currentPageIndex - 1)
     }
-    
+
     func removeCurrentPage() {
         guard let document = pdfDocument, document.pageCount > 1 else { return }
         let index = currentPageIndex
@@ -74,7 +74,7 @@ extension PDFFormViewModel {
         goToPage(index: safeInsertIndex)
         didMakeChange(.addPage(page: page, at: safeInsertIndex))
     }
-    
+
     func restoreOverlaysIfNeeded() {
         guard !didLoadOverlayMetadata else { return }
         if let pendingOverlayMetadata {

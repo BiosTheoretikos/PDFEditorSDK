@@ -3,7 +3,6 @@
 //  PDFEditorSDK
 //
 
-import SwiftUI
 import PDFKit
 import UIKit
 
@@ -14,23 +13,23 @@ extension PDFFormViewModel {
         pendingFormWidgetAnnotation = annotation
         showFormWidgetImageSourceDialog = true
     }
-    
+
     func cancelPendingFormWidgetImagePick() {
         pendingFormWidgetPageIndex = nil
         pendingFormWidgetAnnotation = nil
         imagePickIsForFormWidget = false
     }
-    
+
     func beginFormWidgetImagePickFromCamera() {
         imagePickIsForFormWidget = true
         showFormWidgetImageSourceDialog = false
     }
-    
+
     func beginFormWidgetImagePickFromLibrary() {
         imagePickIsForFormWidget = true
         showFormWidgetImageSourceDialog = false
     }
-    
+
     func handleImagePickedFromSheet(_ image: UIImage?) {
         if imagePickIsForFormWidget {
             let pageIndex = pendingFormWidgetPageIndex
