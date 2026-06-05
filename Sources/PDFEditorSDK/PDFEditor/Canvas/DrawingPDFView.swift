@@ -155,6 +155,36 @@ private struct OverlayObjectViewStore {
     }
 }
 
+private struct TextSelectionInteractionState {
+    var isDirectTouchInProgress = false
+    private(set) var isSelectionInProgress = false
+    private var scrollObserver: NSKeyValueObservation?
+    private var lockedOffset: CGPoint?
+
+    func shouldBeginScrollLock(hasSelection: Bool, isFormFieldTextActive: Bool) -> Bool {
+        !isFormFieldTextActive && isDirectTouchInProgress && hasSelection && !isSelectionInProgress
+    }
+
+    mutating func beginScrollLock(on scrollView: UIScrollView) {
+        guard !isSelectionInProgress else { return }
+        isSelectionInProgress = true
+        let lockedOffset = scrollView.contentOffset
+        self.lockedOffset = lockedOffset
+        scrollObserver = scrollView.observe(\.contentOffset, options: [.new]) { scrollView, _ in
+            if scrollView.contentOffset != lockedOffset {
+                scrollView.setContentOffset(lockedOffset, animated: false)
+            }
+        }
+    }
+
+    mutating func endScrollLock() {
+        guard isSelectionInProgress else { return }
+        isSelectionInProgress = false
+        scrollObserver = nil
+        lockedOffset = nil
+    }
+}
+
 // MARK: - Drawing PDF View
 final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, PencilDrawingGestureDelegate {
     
@@ -280,17 +310,7 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
     /// runs so that function can apply the correct final position.
     private var formFieldTransitionScrollObserver: NSKeyValueObservation?
     private var formFieldTransitionSavedOffset: CGPoint?
-    /// True while a finger touch is in progress. Cleared in touchesEnded/Cancelled so that
-    /// handleTextSelectionChanged can tell whether a selection change is user-driven.
-    private var isDirectTouchInProgress = false
-    /// True while the user is actively selecting baked-in PDF text with a finger gesture.
-    private var isTextSelectionInProgress = false
-    /// KVO token that pins the scroll view's contentOffset during text selection.
-    /// PDFKit scrolls via its own internal gesture recognisers (not scrollView.panGestureRecognizer),
-    /// so isScrollEnabled = false is insufficient — KVO catches every write regardless of source.
-    private var textSelectionScrollObserver: NSKeyValueObservation?
-    /// The content offset captured when text selection began; held constant until the touch ends.
-    private var textSelectionLockedOffset: CGPoint?
+    private var textSelectionInteractionState = TextSelectionInteractionState()
 
     func setFormFieldEntryEnabled(_ enabled: Bool) {
         let selector = NSSelectorFromString("setAllowsFormFieldEntry:")
@@ -2660,7 +2680,10 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
         }
         let hasSelection = currentSelection != nil && !(currentSelection?.string?.isEmpty ?? true)
         formViewModel?.hasTextSelection = hasSelection
-        if !isFormFieldTextActive && isDirectTouchInProgress && hasSelection && !isTextSelectionInProgress {
+        if textSelectionInteractionState.shouldBeginScrollLock(
+            hasSelection: hasSelection,
+            isFormFieldTextActive: isFormFieldTextActive
+        ) {
             beginTextSelectionScrollLock()
         } else if !hasSelection {
             endTextSelectionScrollLock()
@@ -2841,22 +2864,12 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
     }
 
     private func beginTextSelectionScrollLock() {
-        guard !isTextSelectionInProgress, let sv = scrollView else { return }
-        isTextSelectionInProgress = true
-        textSelectionLockedOffset = sv.contentOffset
-        textSelectionScrollObserver = sv.observe(\.contentOffset, options: [.new]) { [weak self] sv, _ in
-            guard let self, let locked = self.textSelectionLockedOffset else { return }
-            if sv.contentOffset != locked {
-                sv.setContentOffset(locked, animated: false)
-            }
-        }
+        guard let scrollView else { return }
+        textSelectionInteractionState.beginScrollLock(on: scrollView)
     }
 
     private func endTextSelectionScrollLock() {
-        guard isTextSelectionInProgress else { return }
-        isTextSelectionInProgress = false
-        textSelectionScrollObserver = nil
-        textSelectionLockedOffset = nil
+        textSelectionInteractionState.endScrollLock()
     }
 
     /// The focused PDF widget text control under `view`, if any (e.g. `PDFTextWidgetTextView`).
@@ -3338,7 +3351,7 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
         // Mark a finger touch as in-progress so go(to:rect:on:) can suppress
         // PDFKit's selection-anchor scroll for the full duration of the gesture.
         if touches.contains(where: { $0.type == .direct }) {
-            isDirectTouchInProgress = true
+            textSelectionInteractionState.isDirectTouchInProgress = true
         }
         super.touchesBegan(touches, with: event)
     }
@@ -3375,14 +3388,14 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
             fingerDismissOverlayTouchStart = nil
             return
         }
-        isDirectTouchInProgress = false
+        textSelectionInteractionState.isDirectTouchInProgress = false
         endTextSelectionScrollLock()
         super.touchesEnded(touches, with: event)
     }
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
         if suppressGoTo { return }
-        isDirectTouchInProgress = false
+        textSelectionInteractionState.isDirectTouchInProgress = false
         endTextSelectionScrollLock()
         if shouldInterceptAllTouches {
             // Pan gesture began — it owns this touch, clear the tap tracker.
