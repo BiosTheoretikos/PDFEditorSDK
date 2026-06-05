@@ -78,15 +78,17 @@ struct PDFBrowseView: View {
         if let url = Bundle.main.url(forResource: "SampleForm", withExtension: "pdf") {
             return url
         }
-        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let url = documentsPath.appendingPathComponent("SampleForm.pdf")
-        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+        do {
+            let url = try documentsDirectoryURL().appendingPathComponent("SampleForm.pdf")
+            return FileManager.default.fileExists(atPath: url.path) ? url : nil
+        } catch {
+            return nil
+        }
     }
 
     private func loadFiles() {
-        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let folderURL = documentsPath.appendingPathComponent("PDFEdits", isDirectory: true)
         do {
+            let folderURL = try pdfEditsFolderURL()
             let files = try FileManager.default.contentsOfDirectory(
                 at: folderURL,
                 includingPropertiesForKeys: [.contentModificationDateKey],
@@ -118,9 +120,8 @@ struct PDFBrowseView: View {
             if didStart { url.stopAccessingSecurityScopedResource() }
         }
 
-        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let folderURL = documentsPath.appendingPathComponent("PDFEdits", isDirectory: true)
         do {
+            let folderURL = try pdfEditsFolderURL()
             try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
             let destinationURL = uniqueDestinationURL(for: url, in: folderURL)
             if FileManager.default.fileExists(atPath: destinationURL.path) {
@@ -145,5 +146,18 @@ struct PDFBrowseView: View {
             counter += 1
         }
         return candidate
+    }
+
+    private func pdfEditsFolderURL() throws -> URL {
+        try documentsDirectoryURL().appendingPathComponent("PDFEdits", isDirectory: true)
+    }
+
+    private func documentsDirectoryURL() throws -> URL {
+        try FileManager.default.url(
+            for: .documentDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: false
+        )
     }
 }
