@@ -180,6 +180,49 @@ public struct PDFEditorView: View {
         self.showsSaveAlert = showsSaveAlert
     }
 
+    /// Creates an editor backed by a `ReferenceFileDocument` model for use in
+    /// SwiftUI document-based apps.
+    ///
+    /// The editor works against an in-memory copy while open. Invoking the editor's
+    /// Save command writes the editable PDF back into `document`, allowing the
+    /// surrounding `DocumentGroup` scene to own the actual file write.
+    ///
+    /// - Parameters:
+    ///   - document: The document model supplied by `DocumentGroup`.
+    ///   - showsDismissButton: Whether to show a leading Close button in the navigation bar.
+    ///   - onExportFlattened: Called when the user exports a flattened PDF.
+    ///   - showsHighlightButton: Whether to show the selected-text highlight button.
+    ///   - showsLockButton: Whether to show the page scroll lock button.
+    ///   - showsPencilButton: Whether to show the PencilKit button.
+    ///   - showsSaveAlert: Whether to show the confirmation alert after saving. Defaults to `false`
+    ///     because document-based apps usually let the system own save feedback.
+    ///   - shouldHighlightFormField: Return `true` to show the blue highlight overlay for a field,
+    ///     `false` to hide it. When `nil` (default), fields are highlighted unless they are
+    ///     read-only (`isReadOnly`) or annotation-locked (`isAnnotationLocked`).
+    public init(
+        document: PDFEditorDocument,
+        showsDismissButton: Bool = false,
+        onExportFlattened: PDFEditorFileHandler? = nil,
+        showsHighlightButton: Bool = true,
+        showsLockButton: Bool = true,
+        showsPencilButton: Bool = true,
+        showsSaveAlert: Bool = false,
+        shouldHighlightFormField: ((PDFFormFieldInfo) -> Bool)? = nil
+    ) {
+        _viewModel = State(
+            initialValue: PDFFormViewModel(
+                document: document,
+                flattenedExportHandler: onExportFlattened,
+                shouldHighlightFormField: shouldHighlightFormField
+            )
+        )
+        self.showsDismissButton = showsDismissButton
+        self.showsHighlightButton = showsHighlightButton
+        self.showsLockButton = showsLockButton
+        self.showsPencilButton = showsPencilButton
+        self.showsSaveAlert = showsSaveAlert
+    }
+
     public var body: some View {
         PDFFormEditorView(
             viewModel: viewModel,

@@ -10,7 +10,7 @@ import UIKit
 @MainActor
 extension PDFFormViewModel {
     @discardableResult
-    func savePDF() throws -> URL {
+    func savePDF() throws -> URL? {
         guard pdfDocument != nil else {
             let error = PDFEditorError.documentNotLoaded
             saveStatus = error.localizedDescription
@@ -34,6 +34,13 @@ extension PDFFormViewModel {
         }
 
         let fileName = PDFGeneratedFileStore.defaultFileName(for: .editable, sourceURL: currentDocumentURL)
+
+        if let referenceDocument {
+            referenceDocument.replacePDFDocument(editableDocument)
+            saveStatus = "Saved to document"
+            return nil
+        }
+
         let stagingURL = try PDFGeneratedFileStore.prepareStagingURL(fileName: fileName)
 
         guard editableDocument.write(to: stagingURL) else {
