@@ -64,6 +64,97 @@ private struct FormFieldEditState {
     }
 }
 
+private struct OverlayObjectViewStore {
+    var textBoxes: [UUID: TextBoxView] = [:]
+    var images: [UUID: ImageBoxView] = [:]
+    var shapes: [UUID: ShapeBoxView] = [:]
+    var selectedTextBoxID: UUID?
+    var selectedImageBoxID: UUID?
+    var selectedShapeID: UUID?
+
+    var hasSelection: Bool {
+        selectedTextBoxID != nil || selectedImageBoxID != nil || selectedShapeID != nil
+    }
+
+    var hasFocusedTextBox: Bool {
+        textBoxes.values.contains(where: { $0.isTextInputFirstResponder })
+    }
+
+    var hasSelectedOrFocusedTextBox: Bool {
+        selectedTextBoxID != nil || hasFocusedTextBox
+    }
+
+    mutating func selectTextBox(id: UUID) {
+        selectedTextBoxID = id
+        selectedImageBoxID = nil
+        selectedShapeID = nil
+    }
+
+    mutating func selectImage(id: UUID) {
+        selectedImageBoxID = id
+        selectedTextBoxID = nil
+        selectedShapeID = nil
+    }
+
+    mutating func selectShape(id: UUID) {
+        selectedShapeID = id
+        selectedTextBoxID = nil
+        selectedImageBoxID = nil
+    }
+
+    mutating func deselect() {
+        selectedTextBoxID = nil
+        selectedImageBoxID = nil
+        selectedShapeID = nil
+    }
+
+    func setSelectMode(_ isSelectMode: Bool) {
+        textBoxes.values.forEach { $0.setSelectMode(isSelectMode) }
+        images.values.forEach { $0.setSelectMode(isSelectMode) }
+        shapes.values.forEach { $0.setSelectMode(isSelectMode) }
+    }
+
+    func setTextInputScribbleEnabled(_ isEnabled: Bool) {
+        for box in textBoxes.values {
+            box.setTextInputScribbleEnabled(isEnabled)
+        }
+    }
+
+    func endTextEditing() {
+        textBoxes.values.forEach { $0.endEditingIfNeeded() }
+    }
+
+    func updateSelectionUI() {
+        for (id, box) in textBoxes {
+            box.setSelected(id == selectedTextBoxID)
+        }
+        for (id, box) in images {
+            box.setSelected(id == selectedImageBoxID)
+        }
+        for (id, box) in shapes {
+            box.setSelected(id == selectedShapeID)
+        }
+    }
+
+    mutating func removeAllFromSuperview() {
+        for view in textBoxes.values {
+            view.removeFromSuperview()
+        }
+        textBoxes.removeAll()
+
+        for view in images.values {
+            view.removeFromSuperview()
+        }
+        images.removeAll()
+
+        for view in shapes.values {
+            view.removeFromSuperview()
+        }
+        shapes.removeAll()
+        deselect()
+    }
+}
+
 // MARK: - Drawing PDF View
 final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, PencilDrawingGestureDelegate {
     
@@ -116,9 +207,7 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
     var isSelectMode = false {
         didSet {
             guard oldValue != isSelectMode else { return }
-            textBoxViews.values.forEach { $0.setSelectMode(isSelectMode) }
-            imageBoxViews.values.forEach { $0.setSelectMode(isSelectMode) }
-            shapeBoxViews.values.forEach { $0.setSelectMode(isSelectMode) }
+            overlayObjectViews.setSelectMode(isSelectMode)
             inkSelectTapGesture?.isEnabled = isSelectMode
             if !isSelectMode {
                 deselectInkAnnotation()
@@ -400,12 +489,7 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
     private let formFieldHighlightHostView = UIView()
     private let formFieldHighlightLayer = CAShapeLayer()
     var formFieldHighlightFilter: ((PDFFormFieldInfo) -> Bool)?
-    private var textBoxViews: [UUID: TextBoxView] = [:]
-    private var imageBoxViews: [UUID: ImageBoxView] = [:]
-    private var shapeBoxViews: [UUID: ShapeBoxView] = [:]
-    private var selectedTextBoxID: UUID?
-    private var selectedImageBoxID: UUID?
-    private var selectedShapeID: UUID?
+    private var overlayObjectViews = OverlayObjectViewStore()
     private var shapePanGesture: UIPanGestureRecognizer?
     private var shapeStartPoint: CGPoint?
     private let shapePreviewLayer = CAShapeLayer()
@@ -790,7 +874,7 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
         if isSelectMode {
             deselectInkAnnotation()
             deselectOverlaySelection()
-        } else if isTextMode || selectedTextBoxID != nil || textBoxViews.values.contains(where: { $0.isTextInputFirstResponder }) {
+        } else if isTextMode || overlayObjectViews.hasSelectedOrFocusedTextBox {
             // Dismiss keyboard and deselect the active text box so the user
             // can draw a new one on the next drag (text tool), or clear focus after editing while
             // another tool is active (draw/erase/shape/PencilKit).
@@ -1135,7 +1219,7 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
             // Tap landed on an existing text box — select and begin editing.
             selectTextBox(id: textBox.id)
             textBox.beginEditing()
-        } else if textBoxViews.values.contains(where: { $0.isTextInputFirstResponder }) {
+        } else if overlayObjectViews.hasFocusedTextBox {
             // A text box is currently being edited — outside tap dismisses it.
             endOverlayTextEditing()
             deselectOverlaySelection()
@@ -1467,7 +1551,7 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
                 } else {
                     // Short movement on empty space — same logic as a pure tap:
                     // dismiss if a box is editing, otherwise create a new one.
-                    let anyBoxEditing = textBoxViews.values.contains { $0.isTextInputFirstResponder }
+                    let anyBoxEditing = overlayObjectViews.hasFocusedTextBox
                     if anyBoxEditing {
                         endOverlayTextEditing()
                         deselectOverlaySelection()
@@ -1598,7 +1682,7 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
             lineFlippedV: startPoint.y > endPoint.y
         )
         addOverlayShape(from: state)
-        selectedShapeID = state.id
+        overlayObjectViews.selectShape(id: state.id)
         formViewModel?.didMakeChange(.overlayShape(add: state, remove: nil))
     }
 
@@ -1617,34 +1701,35 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
             self?.formViewModel?.didMakeChange(.overlayShapeUpdate(before: before, after: after))
         }
         textBoxOverlayView.addSubview(box)
-        shapeBoxViews[state.id] = box
+        overlayObjectViews.shapes[state.id] = box
     }
 
     func removeOverlayShape(id: UUID) {
-        shapeBoxViews[id]?.removeFromSuperview()
-        shapeBoxViews[id] = nil
-        if selectedShapeID == id {
-            selectedShapeID = nil
+        let wasSelected = overlayObjectViews.selectedShapeID == id
+        overlayObjectViews.shapes[id]?.removeFromSuperview()
+        overlayObjectViews.shapes[id] = nil
+        if wasSelected {
+            overlayObjectViews.deselect()
             syncOverlaySelectionState()
         }
     }
 
     func overlayShapeState(id: UUID) -> OverlayShapeState? {
-        guard let box = shapeBoxViews[id] else { return nil }
+        guard let box = overlayObjectViews.shapes[id] else { return nil }
         return OverlayShapeState(id: id, frame: box.frame, kind: box.shapeKind,
             strokeColor: box.strokeColor, lineWidth: box.lineWidth,
             lineFlippedH: box.lineFlippedH, lineFlippedV: box.lineFlippedV)
     }
 
     func updateOverlayShape(from state: OverlayShapeState) {
-        guard let box = shapeBoxViews[state.id] else { return }
+        guard let box = overlayObjectViews.shapes[state.id] else { return }
         box.frame = state.frame
         box.applyStyle(kind: state.kind, strokeColor: state.strokeColor, lineWidth: state.lineWidth)
         box.applyLineOrientation(flippedH: state.lineFlippedH, flippedV: state.lineFlippedV)
     }
 
     func applyImageBorderToSelected(borderWidth: CGFloat, borderColor: UIColor) {
-        guard let id = selectedImageBoxID, let box = imageBoxViews[id] else { return }
+        guard let id = overlayObjectViews.selectedImageBoxID, let box = overlayObjectViews.images[id] else { return }
         let before = OverlayImageState(id: id, frame: box.frame, imageData: box.imageData, borderWidth: box.imageBorderWidth, borderColor: box.imageBorderColor)
         if abs(before.borderWidth - borderWidth) < 0.001, before.borderColor.isEqual(borderColor) { return }
         box.updateBorder(width: borderWidth, color: borderColor)
@@ -1655,8 +1740,8 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
     }
 
     func applyTextBorderToSelected(borderWidth: CGFloat, borderColor: UIColor) {
-        guard let id = selectedTextBoxID,
-              let box = textBoxViews[id],
+        guard let id = overlayObjectViews.selectedTextBoxID,
+              let box = overlayObjectViews.textBoxes[id],
               let before = overlayTextBoxState(id: id) else { return }
         // Selection syncs these properties from the box; skip to avoid churn and feedback loops with .onChange.
         if abs(before.borderWidth - borderWidth) < 0.001, before.borderColor.isEqual(borderColor) { return }
@@ -1668,7 +1753,7 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
     }
 
     func updateOverlayTextBox(from state: OverlayTextBoxState) {
-        guard let box = textBoxViews[state.id] else { return }
+        guard let box = overlayObjectViews.textBoxes[state.id] else { return }
         box.frame = state.frame
         box.setText(state.text)
         box.setBackground(state.backgroundColor)
@@ -1677,14 +1762,14 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
         box.setTextAlignment(state.textAlignment)
         box.setVerticalAlignment(state.verticalAlignment)
         box.updateBorder(width: state.borderWidth, color: state.borderColor)
-        if selectedTextBoxID == state.id {
+        if overlayObjectViews.selectedTextBoxID == state.id {
             formViewModel?.selectedTextBoxBorder.width = state.borderWidth
             formViewModel?.selectedTextBoxBorder.color = state.borderColor
         }
     }
 
     func applyShapeStyleToSelected(kind: OverlayShapeKind, strokeColor: UIColor, lineWidth: CGFloat) {
-        guard let id = selectedShapeID, let box = shapeBoxViews[id] else { return }
+        guard let id = overlayObjectViews.selectedShapeID, let box = overlayObjectViews.shapes[id] else { return }
         let before = OverlayShapeState(id: id, frame: box.frame, kind: box.shapeKind,
             strokeColor: box.strokeColor, lineWidth: box.lineWidth,
             lineFlippedH: box.lineFlippedH, lineFlippedV: box.lineFlippedV)
@@ -1698,18 +1783,16 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
     }
 
     private func selectShapeBox(id: UUID) {
-        selectedShapeID = id
-        selectedTextBoxID = nil
-        selectedImageBoxID = nil
+        overlayObjectViews.selectShape(id: id)
         deselectInkAnnotation()
         formViewModel?.selectedOverlayKind = .shape
-        if let box = shapeBoxViews[id] {
+        if let box = overlayObjectViews.shapes[id] {
             formViewModel?.shapeSettings.kind = box.shapeKind
             formViewModel?.shapeSettings.strokeColor = box.strokeColor
             formViewModel?.shapeSettings.lineWidth = box.lineWidth
         }
         updateOverlaySelectionUI()
-        if let box = shapeBoxViews[id] {
+        if let box = overlayObjectViews.shapes[id] {
             textBoxOverlayView.bringSubviewToFront(box)
         }
     }
@@ -1744,7 +1827,7 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
             borderColor: textBoxBorderColor
         )
         addOverlayTextBox(from: state, beginEditing: true)
-        selectedTextBoxID = state.id
+        overlayObjectViews.selectTextBox(id: state.id)
         formViewModel?.selectedTextBoxBorder.width = state.borderWidth
         formViewModel?.selectedTextBoxBorder.color = state.borderColor
         formViewModel?.didMakeChange(.overlayTextBox(add: state, remove: nil))
@@ -1780,7 +1863,7 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
             borderColor: textBoxBorderColor
         )
         addOverlayTextBox(from: state, beginEditing: true)
-        selectedTextBoxID = state.id
+        overlayObjectViews.selectTextBox(id: state.id)
         formViewModel?.selectedTextBoxBorder.width = state.borderWidth
         formViewModel?.selectedTextBoxBorder.color = state.borderColor
         formViewModel?.didMakeChange(.overlayTextBox(add: state, remove: nil))
@@ -1805,7 +1888,7 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
         box.setSelectMode(isSelectMode)
         textBoxOverlayView.addSubview(box)
         textBoxOverlayView.bringSubviewToFront(box)
-        textBoxViews[state.id] = box
+        overlayObjectViews.textBoxes[state.id] = box
         syncScribbleInteraction()
         if beginEditing {
             box.beginEditing()
@@ -1813,18 +1896,19 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
     }
     
     func removeOverlayTextBox(id: UUID) {
-        if let box = textBoxViews[id] {
+        let wasSelected = overlayObjectViews.selectedTextBoxID == id
+        if let box = overlayObjectViews.textBoxes[id] {
             box.removeFromSuperview()
-            textBoxViews[id] = nil
+            overlayObjectViews.textBoxes[id] = nil
         }
-        if selectedTextBoxID == id {
-            selectedTextBoxID = nil
+        if wasSelected {
+            overlayObjectViews.deselect()
             syncOverlaySelectionState()
         }
     }
     
     func overlayTextBoxState(id: UUID) -> OverlayTextBoxState? {
-        guard let box = textBoxViews[id] else { return nil }
+        guard let box = overlayObjectViews.textBoxes[id] else { return nil }
         return OverlayTextBoxState(
             id: id,
             frame: box.frame,
@@ -1841,8 +1925,8 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
     }
 
     func applyTextStyleToSelectedTextBox(fontSize: CGFloat, isBold: Bool, textColor: UIColor, backgroundColor: UIColor, textAlignment: NSTextAlignment, verticalAlignment: TextVerticalAlignment) {
-        guard let selectedTextBoxID,
-              let box = textBoxViews[selectedTextBoxID] else { return }
+        guard let id = overlayObjectViews.selectedTextBoxID,
+              let box = overlayObjectViews.textBoxes[id] else { return }
         box.applyTextStyle(fontSize: fontSize, isBold: isBold, textColor: textColor)
         box.setBackground(backgroundColor)
         box.setTextAlignment(textAlignment)
@@ -1866,7 +1950,7 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
         
         var removed: OverlayImageState?
         if pageIndex >= 0 {
-            for (id, box) in imageBoxViews {
+            for (id, box) in overlayObjectViews.images {
                 guard let info = pageRect(fromDocRect: box.frame), info.pageIndex == pageIndex else { continue }
                 let center = CGPoint(x: info.pageRect.midX, y: info.pageRect.midY)
                 if annotation.bounds.contains(center), let state = overlayImageState(id: id) {
@@ -1897,29 +1981,30 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
             self?.formViewModel?.didMakeChange(.overlayImageUpdate(before: before, after: after))
         }
         textBoxOverlayView.addSubview(box)
-        imageBoxViews[state.id] = box
+        overlayObjectViews.images[state.id] = box
     }
 
     func updateOverlayImage(from state: OverlayImageState) {
-        guard let box = imageBoxViews[state.id] else { return }
+        guard let box = overlayObjectViews.images[state.id] else { return }
         box.frame = state.frame
         box.setImageData(state.imageData)
         box.updateBorder(width: state.borderWidth, color: state.borderColor)
     }
     
     func removeOverlayImage(id: UUID) {
-        if let box = imageBoxViews[id] {
+        let wasSelected = overlayObjectViews.selectedImageBoxID == id
+        if let box = overlayObjectViews.images[id] {
             box.removeFromSuperview()
-            imageBoxViews[id] = nil
+            overlayObjectViews.images[id] = nil
         }
-        if selectedImageBoxID == id {
-            selectedImageBoxID = nil
+        if wasSelected {
+            overlayObjectViews.deselect()
             syncOverlaySelectionState()
         }
     }
     
     func overlayImageState(id: UUID) -> OverlayImageState? {
-        guard let box = imageBoxViews[id] else { return nil }
+        guard let box = overlayObjectViews.images[id] else { return nil }
         return OverlayImageState(
             id: id,
             frame: box.frame,
@@ -1930,38 +2015,36 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
     }
 
     func deleteSelectedOverlayObject() {
-        if let selectedTextBoxID, let state = overlayTextBoxState(id: selectedTextBoxID) {
-            removeOverlayTextBox(id: selectedTextBoxID)
+        if let id = overlayObjectViews.selectedTextBoxID, let state = overlayTextBoxState(id: id) {
+            removeOverlayTextBox(id: id)
             formViewModel?.didMakeChange(.overlayTextBox(add: nil, remove: state))
             formViewModel?.selectedOverlayKind = nil
             return
         }
-        if let selectedImageBoxID, let state = overlayImageState(id: selectedImageBoxID) {
-            removeOverlayImage(id: selectedImageBoxID)
+        if let id = overlayObjectViews.selectedImageBoxID, let state = overlayImageState(id: id) {
+            removeOverlayImage(id: id)
             formViewModel?.didMakeChange(.overlayImage(add: nil, remove: state))
             formViewModel?.selectedOverlayKind = nil
             return
         }
-        if let selectedShapeID, let state = overlayShapeState(id: selectedShapeID) {
-            removeOverlayShape(id: selectedShapeID)
+        if let id = overlayObjectViews.selectedShapeID, let state = overlayShapeState(id: id) {
+            removeOverlayShape(id: id)
             formViewModel?.didMakeChange(.overlayShape(add: nil, remove: state))
             formViewModel?.selectedOverlayKind = nil
         }
     }
 
     func endOverlayTextEditing() {
-        textBoxViews.values.forEach { $0.endEditingIfNeeded() }
+        overlayObjectViews.endTextEditing()
         textBoxOverlayView.endEditing(true)
         syncOverlayCanvasDismissTap()
     }
 
     private func selectTextBox(id: UUID) {
-        selectedTextBoxID = id
-        selectedImageBoxID = nil
-        selectedShapeID = nil
+        overlayObjectViews.selectTextBox(id: id)
         deselectInkAnnotation()
         formViewModel?.selectedOverlayKind = .textBox
-        if let box = textBoxViews[id] {
+        if let box = overlayObjectViews.textBoxes[id] {
             formViewModel?.selectedTextBoxBorder.width = box.currentBorderWidth
             formViewModel?.selectedTextBoxBorder.color = box.currentBorderColor
             textBoxOverlayView.bringSubviewToFront(box)
@@ -1970,43 +2053,31 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
     }
 
     private func selectImageBox(id: UUID) {
-        selectedImageBoxID = id
-        selectedTextBoxID = nil
-        selectedShapeID = nil
+        overlayObjectViews.selectImage(id: id)
         deselectInkAnnotation()
         formViewModel?.selectedOverlayKind = .image
-        if let box = imageBoxViews[id] {
+        if let box = overlayObjectViews.images[id] {
             formViewModel?.imageSettings.borderWidth = box.imageBorderWidth
             formViewModel?.imageSettings.borderColor = box.imageBorderColor
         }
         updateOverlaySelectionUI()
-        if let box = imageBoxViews[id] {
+        if let box = overlayObjectViews.images[id] {
             textBoxOverlayView.bringSubviewToFront(box)
         }
     }
 
     private func updateOverlaySelectionUI() {
-        for (id, box) in textBoxViews {
-            box.setSelected(id == selectedTextBoxID)
-        }
-        for (id, box) in imageBoxViews {
-            box.setSelected(id == selectedImageBoxID)
-        }
-        for (id, box) in shapeBoxViews {
-            box.setSelected(id == selectedShapeID)
-        }
+        overlayObjectViews.updateSelectionUI()
         syncOverlaySelectionState()
         syncOverlayCanvasDismissTap()
     }
 
     private func syncOverlaySelectionState() {
-        formViewModel?.hasSelectedOverlayObject = (selectedTextBoxID != nil || selectedImageBoxID != nil || selectedShapeID != nil)
+        formViewModel?.hasSelectedOverlayObject = overlayObjectViews.hasSelection
     }
 
     func deselectOverlaySelection() {
-        selectedTextBoxID = nil
-        selectedImageBoxID = nil
-        selectedShapeID = nil
+        overlayObjectViews.deselect()
         formViewModel?.selectedOverlayKind = nil
         updateOverlaySelectionUI()
     }
@@ -2157,7 +2228,7 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
         var imageMetas: [OverlayImageMeta] = []
         var shapeMetas: [OverlayShapeMeta] = []
 
-        for (id, box) in textBoxViews {
+        for (id, box) in overlayObjectViews.textBoxes {
             guard let pageInfo = pageRect(fromDocRect: box.frame) else { continue }
             let meta = OverlayTextBoxMeta(
                 id: id,
@@ -2177,7 +2248,7 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
             textMetas.append(meta)
         }
 
-        for (id, box) in imageBoxViews {
+        for (id, box) in overlayObjectViews.images {
             guard let pageInfo = pageRect(fromDocRect: box.frame) else { continue }
             let meta = OverlayImageMeta(
                 id: id,
@@ -2190,7 +2261,7 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
             imageMetas.append(meta)
         }
 
-        for (id, box) in shapeBoxViews {
+        for (id, box) in overlayObjectViews.shapes {
             guard let pageInfo = pageRect(fromDocRect: box.frame) else { continue }
             let meta = OverlayShapeMeta(
                 id: id,
@@ -2260,18 +2331,7 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
     }
     
     private func clearOverlayViews() {
-        for view in textBoxViews.values {
-            view.removeFromSuperview()
-        }
-        textBoxViews.removeAll()
-        for view in imageBoxViews.values {
-            view.removeFromSuperview()
-        }
-        imageBoxViews.removeAll()
-        for view in shapeBoxViews.values {
-            view.removeFromSuperview()
-        }
-        shapeBoxViews.removeAll()
+        overlayObjectViews.removeAllFromSuperview()
     }
     
     private func pageRect(fromDocRect rectInDoc: CGRect) -> (pageIndex: Int, pageRect: CGRect)? {
@@ -2540,16 +2600,13 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
     /// Overlay `UITextView` Scribble: on for **Text** and **Form** tools only.
     private func syncOverlayTextViewsScribbleEnabled() {
         let scribbleAllowedOnTextOverlays = isTextMode || isFormMode
-        for box in textBoxViews.values {
-            box.setTextInputScribbleEnabled(scribbleAllowedOnTextOverlays)
-        }
+        overlayObjectViews.setTextInputScribbleEnabled(scribbleAllowedOnTextOverlays)
     }
 
     /// Tap on empty overlay canvas: select-mode deselect, text-mode dismiss, or (when a text box
     /// is focused/selected outside Text/Select tools) dismiss keyboard — without blocking drawing.
     private func syncOverlayCanvasDismissTap() {
-        let overlayTextNeedsDismissTap = selectedTextBoxID != nil
-            || textBoxViews.values.contains(where: { $0.isTextInputFirstResponder })
+        let overlayTextNeedsDismissTap = overlayObjectViews.hasSelectedOrFocusedTextBox
         let enable = !isFormMode && (isSelectMode || isTextMode || overlayTextNeedsDismissTap)
         overlaySelectTapGesture?.isEnabled = enable
     }
@@ -3155,7 +3212,7 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
         }
 
         // Preserve scroll position when editing an overlay text box
-        if selectedTextBoxID != nil, let sv = scrollView {
+        if overlayObjectViews.selectedTextBoxID != nil, let sv = scrollView {
             savedTextBoxContentOffset = sv.contentOffset
         }
     }
@@ -3181,7 +3238,7 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
         // Restore scroll position when editing an overlay text box so the
         // keyboard appearance doesn't shift annotations around the page.
         guard let saved = savedTextBoxContentOffset,
-              selectedTextBoxID != nil,
+              overlayObjectViews.selectedTextBoxID != nil,
               let sv = scrollView else { return }
         if sv.contentOffset != saved {
             sv.setContentOffset(saved, animated: false)
@@ -3189,7 +3246,7 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
     }
     
     private func scrollFocusedFormFieldAboveKeyboard(animationDuration: Double = 0.25) {
-        guard isFormMode, selectedTextBoxID == nil else { return }
+        guard isFormMode, overlayObjectViews.selectedTextBoxID == nil else { return }
         guard let sv = scrollView, let window else { return }
         guard !lastKnownKeyboardFrame.isEmpty else { return }
 
@@ -3273,7 +3330,7 @@ final class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, Penc
             if isTextMode, let touch = touches.first {
                 textModeTouchStart = touch.location(in: self)
             } else if !isFormMode, let touch = touches.first, touch.type == .direct,
-                      selectedTextBoxID != nil || textBoxViews.values.contains(where: { $0.isTextInputFirstResponder }) {
+                      overlayObjectViews.hasSelectedOrFocusedTextBox {
                 fingerDismissOverlayTouchStart = touch.location(in: self)
             }
             return
