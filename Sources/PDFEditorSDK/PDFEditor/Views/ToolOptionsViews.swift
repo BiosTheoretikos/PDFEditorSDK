@@ -6,69 +6,28 @@
 import SwiftUI
 import UIKit
 
-// MARK: - Scrollable toolbar / menu helpers
-
-/// Vertical scroll for `Menu` content when the action list is taller than available space (e.g. iPad landscape).
-struct MenuScrollableActions<Content: View>: View {
-    var maxHeight: CGFloat = 340
-    @ViewBuilder var content: () -> Content
-
-    var body: some View {
-        ScrollView(.vertical, showsIndicators: true) {
-            VStack(alignment: .leading, spacing: 0) {
-                content()
-            }
-        }
-        .frame(maxHeight: maxHeight)
-    }
-}
-
-/// Many toolbar chips in one fixed row.
-struct ToolbarSubtoolsScrollRow<Content: View>: View {
-    @ViewBuilder var content: () -> Content
-
-    var body: some View {
-        HStack(alignment: .center, spacing: 8) {
-            content()
-        }
-        .fixedSize(horizontal: true, vertical: false)
-    }
-}
-
 // MARK: - Draw Tool Options
 
 struct DrawToolOptionsView: View {
     @Binding var inkColor: Color
     @Binding var inkLineWidth: CGFloat
-    var lineWidthInputStyle: LineWidthInputStyle
     var lineWidthStep: CGFloat
     var lineWidthMax: CGFloat
 
     var body: some View {
-        ToolOptionsContainer(title: "Draw Settings") {
-            HStack {
-                Label("Color", systemImage: "paintbrush.pointed")
-                    .font(.caption)
-                    .fontWeight(.medium)
-                Spacer()
-                ColorPicker("", selection: $inkColor)
-                    .labelsHidden()
+        Form {
+            Section("Draw") {
+                ColorPicker("Color", selection: $inkColor)
+                LineWidthInputRow(
+                    title: "Line Width",
+                    value: $inkLineWidth,
+                    step: lineWidthStep,
+                    max: lineWidthMax,
+                    allowsZero: false
+                )
             }
-            .toolOptionRow()
-
-            Divider()
-
-            LineWidthInputRow(
-                title: "Line Width",
-                value: $inkLineWidth,
-                style: lineWidthInputStyle,
-                step: lineWidthStep,
-                max: lineWidthMax,
-                allowsZero: false,
-                presetOptions: [(1.0, "1pt"), (3.0, "3pt"), (6.0, "6pt")]
-            )
-            .toolOptionRow()
         }
+        .frame(minWidth: 320, maxHeight: 260)
     }
 }
 
@@ -83,168 +42,59 @@ struct TextToolOptionsView: View {
     @Binding var verticalAlignment: TextVerticalAlignment
     @Binding var borderWidth: CGFloat
     @Binding var borderColor: Color
-    var lineWidthInputStyle: LineWidthInputStyle
     var lineWidthStep: CGFloat
     var lineWidthMax: CGFloat
 
     @Environment(\.verticalSizeClass) private var verticalSizeClass
 
-    /// Long-press Text tool popover: cap scroll area so the sheet fits in compact vertical space (e.g. iPhone / iPad landscape).
-    private var textOptionsScrollMaxHeight: CGFloat {
-        verticalSizeClass == .compact ? 280 : 420
+    private var maxHeight: CGFloat {
+        verticalSizeClass == .compact ? 360 : 560
     }
 
     var body: some View {
-        ToolOptionsContainer(title: "Text Settings") {
-            ScrollView(.vertical, showsIndicators: true) {
-                VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Label("Text Color", systemImage: "character")
-                    .font(.caption)
-                    .fontWeight(.medium)
-                Spacer()
-                ColorPicker("", selection: $textColor)
-                    .labelsHidden()
-            }
-            .toolOptionRow()
-
-            Divider()
-
-            HStack {
-                Label("Background", systemImage: "rectangle.fill")
-                    .font(.caption)
-                    .fontWeight(.medium)
-                Spacer()
-                ColorPicker("", selection: $backgroundColor, supportsOpacity: true)
-                    .labelsHidden()
-            }
-            .toolOptionRow()
-
-            Divider()
-
-            LineWidthInputRow(
-                title: "Font Size",
-                value: $fontSize,
-                style: .stepper,
-                step: 1,
-                max: 144,
-                allowsZero: false,
-                fieldLabel: "Font size",
-                presetOptions: []
-            )
-            .toolOptionRow()
-
-            Divider()
-
-            Toggle(isOn: $isBold) {
-                Label("Bold", systemImage: "bold")
-                    .font(.caption)
-                    .fontWeight(.medium)
-            }
-            .toolOptionRow()
-
-            Divider()
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Horizontal Alignment")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                HStack(spacing: 4) {
-                    ForEach([
-                        (NSTextAlignment.left,   "text.alignleft",   "Leading"),
-                        (.center,                "text.aligncenter", "Center"),
-                        (.right,                 "text.alignright",  "Trailing"),
-                    ] as [(NSTextAlignment, String, String)], id: \.2) { alignment, icon, label in
-                        Button {
-                            textAlignment = alignment
-                        } label: {
-                            VStack(spacing: 3) {
-                                Image(systemName: icon)
-                                    .font(.callout).fontWeight(.semibold)
-                                Text(label)
-                                    .font(.caption2).fontWeight(.medium)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 6)
-                            .background(
-                                textAlignment == alignment
-                                    ? Color.accentColor
-                                    : Color.secondary.opacity(0.15),
-                                in: .rect(cornerRadius: 8)
-                            )
-                            .foregroundStyle(textAlignment == alignment ? Color.white : Color.primary)
-                        }
-                        .buttonStyle(.plain)
-                    }
+        Form {
+            Section("Text") {
+                ColorPicker("Text Color", selection: $textColor)
+                LineWidthInputRow(
+                    title: "Font Size",
+                    value: $fontSize,
+                    step: 1,
+                    max: 144,
+                    allowsZero: false,
+                    fieldLabel: "Font size"
+                )
+                Toggle("Bold", isOn: $isBold)
+                Picker("Horizontal Alignment", selection: $textAlignment) {
+                    Label("Leading", systemImage: "text.alignleft")
+                        .tag(NSTextAlignment.left)
+                    Label("Center", systemImage: "text.aligncenter")
+                        .tag(NSTextAlignment.center)
+                    Label("Trailing", systemImage: "text.alignright")
+                        .tag(NSTextAlignment.right)
+                }
+                Picker("Vertical Alignment", selection: $verticalAlignment) {
+                    Label("Top", systemImage: "arrow.up.to.line")
+                        .tag(TextVerticalAlignment.top)
+                    Label("Middle", systemImage: "arrow.up.and.down")
+                        .tag(TextVerticalAlignment.middle)
+                    Label("Bottom", systemImage: "arrow.down.to.line")
+                        .tag(TextVerticalAlignment.bottom)
                 }
             }
-            .toolOptionRow()
 
-            Divider()
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Vertical Alignment")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                HStack(spacing: 4) {
-                    ForEach([
-                        (TextVerticalAlignment.top,    "arrow.up.to.line",     "Top"),
-                        (.middle,                      "arrow.up.and.down",    "Middle"),
-                        (.bottom,                      "arrow.down.to.line",   "Bottom"),
-                    ] as [(TextVerticalAlignment, String, String)], id: \.2) { alignment, icon, label in
-                        Button {
-                            verticalAlignment = alignment
-                        } label: {
-                            VStack(spacing: 3) {
-                                Image(systemName: icon)
-                                    .font(.callout).fontWeight(.semibold)
-                                Text(label)
-                                    .font(.caption2).fontWeight(.medium)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 6)
-                            .background(
-                                verticalAlignment == alignment
-                                    ? Color.accentColor
-                                    : Color.secondary.opacity(0.15),
-                                in: .rect(cornerRadius: 8)
-                            )
-                            .foregroundStyle(verticalAlignment == alignment ? Color.white : Color.primary)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
+            Section("Text Box") {
+                ColorPicker("Background", selection: $backgroundColor, supportsOpacity: true)
+                ColorPicker("Border Color", selection: $borderColor)
+                LineWidthInputRow(
+                    title: "Border Width",
+                    value: $borderWidth,
+                    step: lineWidthStep,
+                    max: lineWidthMax,
+                    allowsZero: true
+                )
             }
-            .toolOptionRow()
-
-            Divider()
-
-            HStack {
-                Label("Border Color", systemImage: "square.dashed")
-                    .font(.caption)
-                    .fontWeight(.medium)
-                Spacer()
-                ColorPicker("", selection: $borderColor)
-                    .labelsHidden()
-            }
-            .toolOptionRow()
-
-            Divider()
-
-            LineWidthInputRow(
-                title: "Border Width",
-                value: $borderWidth,
-                style: lineWidthInputStyle,
-                step: lineWidthStep,
-                max: lineWidthMax,
-                allowsZero: true,
-                presetOptions: [(0.0, "None"), (1.0, "1pt"), (2.0, "2pt"), (4.0, "4pt"), (6.0, "6pt")]
-            )
-            .toolOptionRow()
-                }
-            }
-            .frame(maxHeight: textOptionsScrollMaxHeight)
         }
+        .frame(minWidth: 340, maxHeight: maxHeight)
     }
 }
 
@@ -254,98 +104,85 @@ struct ShapeToolOptionsView: View {
     @Binding var shapeKind: OverlayShapeKind
     @Binding var strokeColor: Color
     @Binding var lineWidth: CGFloat
-    var lineWidthInputStyle: LineWidthInputStyle
     var lineWidthStep: CGFloat
     var lineWidthMax: CGFloat
 
     var body: some View {
-        ToolOptionsContainer(title: "Shape Settings") {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Shape")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                VStack(spacing: 6) {
-                    HStack(spacing: 8) {
-                        ForEach([OverlayShapeKind.circle, .rectangle, .triangle], id: \.self) { kind in
-                            ShapeKindButton(kind: kind, isSelected: shapeKind == kind) {
-                                shapeKind = kind
-                            }
-                        }
-                        
-                    }
-                    HStack(spacing: 8) {
-                        ForEach([OverlayShapeKind.line, .arrow], id: \.self) { kind in
-                            ShapeKindButton(kind: kind, isSelected: shapeKind == kind) {
-                                shapeKind = kind
-                            }
-                        }
+        Form {
+            Section("Shape") {
+                Picker("Shape", selection: $shapeKind) {
+                    ForEach(Self.shapeKinds, id: \.self) { kind in
+                        Label(label(for: kind), systemImage: iconName(for: kind))
+                            .tag(kind)
                     }
                 }
+                ColorPicker("Stroke Color", selection: $strokeColor)
+                LineWidthInputRow(
+                    title: "Line Width",
+                    value: $lineWidth,
+                    step: lineWidthStep,
+                    max: lineWidthMax,
+                    allowsZero: false
+                )
             }
-            .toolOptionRow()
+        }
+        .frame(minWidth: 320, maxHeight: 360)
+    }
 
-            Divider()
+    private static let shapeKinds: [OverlayShapeKind] = [
+        .circle,
+        .rectangle,
+        .triangle,
+        .line,
+        .arrow,
+        .doubleArrow,
+    ]
 
-            HStack {
-                Label("Stroke Color", systemImage: "paintbrush.pointed")
-                    .font(.caption)
-                    .fontWeight(.medium)
-                Spacer()
-                ColorPicker("", selection: $strokeColor)
-                    .labelsHidden()
-            }
-            .toolOptionRow()
+    private func iconName(for kind: OverlayShapeKind) -> String {
+        switch kind {
+        case .circle: return "circle"
+        case .rectangle: return "rectangle"
+        case .triangle: return "triangle"
+        case .line: return "line.diagonal"
+        case .arrow: return "arrow.up.right"
+        case .doubleArrow: return "arrow.left.and.right"
+        }
+    }
 
-            Divider()
-
-            LineWidthInputRow(
-                title: "Line Width",
-                value: $lineWidth,
-                style: lineWidthInputStyle,
-                step: lineWidthStep,
-                max: lineWidthMax,
-                allowsZero: false,
-                presetOptions: [(1.0, "1pt"), (2.0, "2pt"), (4.0, "4pt"), (6.0, "6pt")]
-            )
-            .toolOptionRow()
+    private func label(for kind: OverlayShapeKind) -> String {
+        switch kind {
+        case .circle: return "Circle"
+        case .rectangle: return "Rectangle"
+        case .triangle: return "Triangle"
+        case .line: return "Line"
+        case .arrow: return "Arrow"
+        case .doubleArrow: return "Double Arrow"
         }
     }
 }
 
-// MARK: - Image Border Defaults (toolbar long-press popover)
+// MARK: - Image Border Defaults
 
 struct ImageBorderToolOptionsView: View {
     @Binding var borderWidth: CGFloat
     @Binding var borderColor: Color
-    var lineWidthInputStyle: LineWidthInputStyle
     var lineWidthStep: CGFloat
     var lineWidthMax: CGFloat
 
     var body: some View {
-        ToolOptionsContainer(title: "Image Border") {
-            HStack {
-                Label("Border Color", systemImage: "paintbrush.pointed")
-                    .font(.caption)
-                    .fontWeight(.medium)
-                Spacer()
-                ColorPicker("", selection: $borderColor)
-                    .labelsHidden()
+        Form {
+            Section("Image Border") {
+                ColorPicker("Border Color", selection: $borderColor)
+                LineWidthInputRow(
+                    title: "Default Width",
+                    value: $borderWidth,
+                    step: lineWidthStep,
+                    max: lineWidthMax,
+                    allowsZero: true
+                )
             }
-            .toolOptionRow()
-
-            Divider()
-
-            LineWidthInputRow(
-                title: "Default width",
-                value: $borderWidth,
-                style: lineWidthInputStyle,
-                step: lineWidthStep,
-                max: lineWidthMax,
-                allowsZero: true,
-                presetOptions: [(0.0, "None"), (1.0, "1pt"), (2.0, "2pt"), (4.0, "4pt"), (6.0, "6pt")]
-            )
-            .toolOptionRow()
         }
+        .frame(minWidth: 320, maxHeight: 240)
     }
 }
 
@@ -355,82 +192,22 @@ struct EraserToolOptionsView: View {
     @Binding var eraserRadius: CGFloat
 
     var body: some View {
-        ToolOptionsContainer(title: "Eraser Settings") {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Size")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                SegmentedOptionRow(
-                    options: [
-                        (6.0, "6pt"),
-                        (9.0, "9pt"),
-                        (13.0, "13pt"),
-                        (18.0, "18pt"),
-                        (24.0, "24pt"),
-                    ],
-                    selected: $eraserRadius
+        Form {
+            Section("Eraser") {
+                LineWidthInputRow(
+                    title: "Size",
+                    value: $eraserRadius,
+                    step: 1,
+                    max: 48,
+                    allowsZero: false
                 )
             }
-            .toolOptionRow()
         }
+        .frame(minWidth: 320, maxHeight: 180)
     }
 }
 
-// MARK: - Shared Helpers
-
-private struct ToolOptionsContainer<Content: View>: View {
-    let title: String
-    @ViewBuilder var content: () -> Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(title)
-                .font(.footnote)
-                .fontWeight(.semibold)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 16)
-                .padding(.top, 16)
-                .padding(.bottom, 8)
-
-            Divider()
-
-            content()
-        }
-        .frame(width: 300)
-        .padding(.bottom, 4)
-    }
-}
-
-struct SegmentedOptionRow<T: Equatable>: View {
-    let options: [(T, String)]
-    @Binding var selected: T
-
-    var body: some View {
-        HStack(spacing: 4) {
-            ForEach(Array(options.enumerated()), id: \.offset) { _, pair in
-                Button(pair.1) {
-                    selected = pair.0
-                }
-                .buttonStyle(.plain)
-                .font(.caption2)
-                .fontWeight(.medium)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 5)
-                .background(
-                    selected == pair.0
-                        ? Color.accentColor
-                        : Color.secondary.opacity(0.15),
-                    in: .rect(cornerRadius: 8)
-                )
-                .foregroundStyle(selected == pair.0 ? Color.white : Color.primary)
-            }
-        }
-    }
-}
-
-// MARK: - Line width (preset vs stepper)
+// MARK: - Line width
 
 private struct LineWidthStepperControl: View {
     @Binding var value: CGFloat
@@ -439,152 +216,64 @@ private struct LineWidthStepperControl: View {
     let allowsZero: Bool
     var fieldLabel: String = "Width"
 
-    @State private var editingText = ""
-    @FocusState private var isFieldFocused: Bool
-
     private var minValue: CGFloat { allowsZero ? 0 : Swift.max(step, 0.25) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if allowsZero || isFieldFocused {
-                HStack(spacing: 8) {
-                    if allowsZero {
-                        Button("None") {
-                            value = 0
-                            editingText = "0"
-                            isFieldFocused = false
-                        }
-                        .buttonStyle(.bordered)
-                        .font(.caption)
-                        .controlSize(.small)
-                    }
-                    Spacer(minLength: 0)
-                    if isFieldFocused {
-                        Button("Done") {
-                            commitEditing()
-                            isFieldFocused = false
-                        }
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                    }
-                }
-            }
-
+        VStack(alignment: .leading) {
             Stepper(
                 value: Binding(
                     get: { Double(value) },
-                    set: { newVal in
-                        value = LineWidthFormatting.snap(CGFloat(newVal), step: step, min: minValue, max: max)
-                        syncTextFromValue()
+                    set: { newValue in
+                        value = LineWidthFormatting.snap(
+                            CGFloat(newValue),
+                            step: step,
+                            min: minValue,
+                            max: max
+                        )
                     }
                 ),
                 in: Double(minValue)...Double(max),
                 step: Double(step)
             ) {
-                HStack(spacing: 8) {
-                    TextField(fieldLabel, text: $editingText)
-                        .keyboardType(.decimalPad)
-                        .focused($isFieldFocused)
-                        .multilineTextAlignment(.trailing)
-                        .font(.body.monospacedDigit())
-                        .frame(minWidth: 48, maxWidth: 88)
-                        .textFieldStyle(.roundedBorder)
-                        .accessibilityLabel("\(fieldLabel) in points")
-                    Text("pt")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                Text("\(fieldLabel): \(formattedNumber(for: value)) pt")
             }
-        }
-        .onAppear {
-            syncTextFromValue()
-        }
-        .onChange(of: value) { _, _ in
-            if !isFieldFocused {
-                syncTextFromValue()
-            }
-        }
-        .onChange(of: isFieldFocused) { _, focused in
-            if !focused {
-                commitEditing()
-            }
-        }
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                HStack {
-                    Spacer(minLength: 0)
-                    Button("Done") {
-                        commitEditing()
-                        isFieldFocused = false
-                    }
-                    .fontWeight(.semibold)
+
+            if allowsZero {
+                Button("None") {
+                    value = 0
                 }
             }
         }
     }
 
-    private func syncTextFromValue() {
-        editingText = formattedNumber(for: value)
-    }
-
-    /// Numeric string for the text field (no "pt" suffix).
-    private func formattedNumber(for v: CGFloat) -> String {
-        if allowsZero && v <= 0 { return "0" }
+    private func formattedNumber(for value: CGFloat) -> String {
+        if allowsZero && value <= 0 { return "0" }
         if step < 1 {
-            return String(format: "%.1f", Double(v))
+            return String(format: "%.1f", Double(value))
         }
-        return "\(Int(v.rounded()))"
-    }
-
-    private func commitEditing() {
-        let trimmed = editingText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty {
-            syncTextFromValue()
-            return
-        }
-        let normalized = trimmed.replacingOccurrences(of: ",", with: ".")
-        guard let parsed = Double(normalized) else {
-            syncTextFromValue()
-            return
-        }
-        if allowsZero && parsed <= 0 {
-            value = 0
-            editingText = "0"
-            return
-        }
-        let snapped = LineWidthFormatting.snap(CGFloat(parsed), step: step, min: minValue, max: max)
-        value = snapped
-        syncTextFromValue()
+        return "\(Int(value.rounded()))"
     }
 }
 
 struct LineWidthInputRow: View {
     var title: String?
     @Binding var value: CGFloat
-    let style: LineWidthInputStyle
     let step: CGFloat
     let max: CGFloat
     let allowsZero: Bool
     var fieldLabel: String = "Width"
-    let presetOptions: [(CGFloat, String)]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if let title {
-                Text(title)
-                    .font(.caption)
-                    .fontWeight(.semibold)
-            }
-            if style == .presetButtons {
-                SegmentedOptionRow(options: presetOptions, selected: $value)
-            } else {
-                LineWidthStepperControl(value: $value, step: step, max: max, allowsZero: allowsZero, fieldLabel: fieldLabel)
-            }
-        }
+        LineWidthStepperControl(
+            value: $value,
+            step: step,
+            max: max,
+            allowsZero: allowsZero,
+            fieldLabel: title ?? fieldLabel
+        )
     }
 }
 
-/// Stepper-only panel for compact toolbar popovers when line width style is stepper.
 struct ToolbarLineWidthStepperPanel: View {
     @Binding var width: CGFloat
     let step: CGFloat
@@ -593,159 +282,49 @@ struct ToolbarLineWidthStepperPanel: View {
     var title: String = "Width"
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundStyle(.secondary)
-            LineWidthStepperControl(value: $width, step: step, max: max, allowsZero: allowsZero)
+        Form {
+            Section(title) {
+                LineWidthStepperControl(value: $width, step: step, max: max, allowsZero: allowsZero)
+            }
         }
-        .padding(16)
-        .frame(width: 280)
+        .frame(minWidth: 320, maxHeight: 180)
     }
 }
 
-/// Matches `TextToolOptionsView` font size stepper (1 pt steps, max 144).
 struct ToolbarFontSizeStepperPanel: View {
     @Binding var fontSize: CGFloat
-    var title: String = "Font size"
+    var title: String = "Font Size"
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundStyle(.secondary)
-            LineWidthStepperControl(
-                value: $fontSize,
-                step: 1,
-                max: 144,
-                allowsZero: false,
-                fieldLabel: "Font size"
-            )
+        Form {
+            Section(title) {
+                LineWidthStepperControl(
+                    value: $fontSize,
+                    step: 1,
+                    max: 144,
+                    allowsZero: false,
+                    fieldLabel: "Font Size"
+                )
+            }
         }
-        .padding(16)
-        .frame(width: 280)
+        .frame(minWidth: 320, maxHeight: 180)
     }
 }
 
 struct ToolbarBorderWidthColorPanel: View {
     @Binding var width: CGFloat
     @Binding var color: Color
-    let style: LineWidthInputStyle
     let step: CGFloat
     let max: CGFloat
     var title: String = "Border"
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundStyle(.secondary)
-
-            if style == .presetButtons {
-                VStack(alignment: .leading, spacing: 8) {
-                    borderWidthPresetButton(label: "None", width: 0)
-                    borderWidthPresetButton(label: "Thin (1pt)", width: 1)
-                    borderWidthPresetButton(label: "Medium (2pt)", width: 2)
-                    borderWidthPresetButton(label: "Thick (4pt)", width: 4)
-                    borderWidthPresetButton(label: "Heavy (6pt)", width: 6)
-                }
-            } else {
+        Form {
+            Section(title) {
+                ColorPicker("Color", selection: $color)
                 LineWidthStepperControl(value: $width, step: step, max: max, allowsZero: true)
             }
-
-            Divider()
-
-            HStack {
-                Label("Border color", systemImage: "square.dashed")
-                    .font(.caption)
-                    .fontWeight(.medium)
-                Spacer()
-                ColorPicker("", selection: $color)
-                    .labelsHidden()
-            }
         }
-        .padding(16)
-        .frame(width: 280)
-    }
-
-    private func borderWidthPresetButton(label: String, width presetWidth: CGFloat) -> some View {
-        Button {
-            width = presetWidth
-        } label: {
-            HStack {
-                Text(label)
-                Spacer()
-                if abs(width - presetWidth) < 0.001 {
-                    Image(systemName: "checkmark")
-                        .fontWeight(.semibold)
-                }
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(Color.accentColor)
-    }
-}
-
-private struct ShapeKindButton: View {
-    let kind: OverlayShapeKind
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 4) {
-                Image(systemName: iconName)
-                    .fontWeight(.semibold)
-                    .font(.callout)
-                Text(label)
-                    .font(.caption2)
-                    .fontWeight(.medium)
-            }
-            .frame(width: 68, height: 48)
-            .background(
-                isSelected ? Color.accentColor.opacity(0.2) : Color.secondary.opacity(0.1),
-                in: .rect(cornerRadius: 10)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 1.5)
-            )
-            .foregroundStyle(Color.accentColor)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var iconName: String {
-        switch kind {
-        case .circle:    return "circle"
-        case .rectangle: return "rectangle"
-        case .triangle:  return "triangle"
-        case .line:        return "line.diagonal"
-        case .arrow:       return "arrow.up.right"
-        case .doubleArrow: return "arrow.left.and.right"
-        }
-    }
-
-    private var label: String {
-        switch kind {
-        case .circle:      return "Circle"
-        case .rectangle:   return "Rect"
-        case .triangle:    return "Triangle"
-        case .line:        return "Line"
-        case .arrow:       return "Arrow"
-        case .doubleArrow: return "2-Arrow"
-        }
-    }
-}
-
-// MARK: - View Extension
-
-extension View {
-    func toolOptionRow() -> some View {
-        self.padding(.horizontal, 16).padding(.vertical, 12)
+        .frame(minWidth: 320, maxHeight: 240)
     }
 }

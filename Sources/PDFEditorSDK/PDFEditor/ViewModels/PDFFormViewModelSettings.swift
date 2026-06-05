@@ -132,29 +132,21 @@ struct PencilInputSettings {
 
 struct EditorDisplaySettings {
     var isThumbnailOverlayVisible: Bool
-    var toolbarCompact: Bool
-    var toolOptionsPresentation: ToolOptionsPresentation
 
     init(preferences: EditorPreferences) {
         isThumbnailOverlayVisible = preferences.isThumbnailOverlayVisible
-        toolbarCompact = preferences.toolbarCompact
-        toolOptionsPresentation = preferences.toolOptionsPresentation
     }
 
     func apply(to preferences: inout EditorPreferences) {
         preferences.isThumbnailOverlayVisible = isThumbnailOverlayVisible
-        preferences.toolbarCompact = toolbarCompact
-        preferences.toolOptionsPresentation = toolOptionsPresentation
     }
 }
 
 struct LineWidthControlSettings {
-    var inputStyle: LineWidthInputStyle
     var step: CGFloat
     var max: CGFloat
 
     init(preferences: EditorPreferences) {
-        inputStyle = preferences.lineWidthInputStyle
         step = preferences.lineWidthStep
         max = preferences.lineWidthMax
         normalize()
@@ -169,7 +161,6 @@ struct LineWidthControlSettings {
     }
 
     func apply(to preferences: inout EditorPreferences) {
-        preferences.lineWidthInputStyle = inputStyle
         preferences.lineWidthStep = step
         preferences.lineWidthMax = max
     }

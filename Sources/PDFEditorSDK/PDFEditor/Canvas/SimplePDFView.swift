@@ -11,7 +11,6 @@ struct SimplePDFView: UIViewRepresentable {
         pdfView.autoScales = true
         pdfView.displayMode = .singlePageContinuous
         pdfView.displayDirection = .vertical
-        pdfView.backgroundColor = .systemGroupedBackground
         pdfView.setFormFieldEntryEnabled(true)
         pdfView.formViewModel = viewModel
 

@@ -43,7 +43,6 @@ struct PDFBrowseView: View {
                         } label: {
                             HStack {
                                 Image(systemName: "doc.richtext")
-                                    .foregroundStyle(.secondary)
                                 Text(url.lastPathComponent)
                             }
                         }
