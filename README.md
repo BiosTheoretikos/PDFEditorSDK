@@ -1,6 +1,6 @@
 # PDFEditorSDK
 
-`PDFEditorSDK` is a SwiftUI-first PDF and image editing SDK for iOS, built with native UIKit rendering, full Apple Pencil support, configurable Pencil gesture mapping, and a clean long-press toolbar designed for touch and stylus workflows.
+`PDFEditorSDK` is a SwiftUI-first PDF editing SDK for iOS, built with native UIKit rendering, full Apple Pencil support, configurable Pencil gesture mapping, and a clean long-press toolbar designed for touch and stylus workflows.
 
 ---
 
@@ -36,21 +36,17 @@ targets: [
 
 ```
 Sources/PDFEditorSDK/
-├── PDFEditorSDK.swift                    — public entry points (PDFEditorView, ImageEditorView, static utilities)
-├── Editor/
-│   ├── PDFEditorView.swift               — SwiftUI shell and toolbar
-│   ├── PDFFormViewModel.swift            — editing state, undo/redo, save/export logic
-│   ├── DrawingPDFView.swift              — UIKit PDF canvas with gesture handling
-│   ├── PDFOverlayRenderer.swift          — shared rendering engine for overlays (thumbnail + flatten)
-│   ├── EditorModels.swift                — shared enums and data types
-│   ├── EditorPreferences.swift           — UserDefaults persistence for tool settings
-│   ├── EditorSettingsView.swift          — input mode settings popover
-│   ├── ToolOptionsViews.swift            — per-tool settings popovers (draw, erase, text, shape)
-│   ├── OverlayViews.swift                — TextBoxView, ImageBoxView, ShapeBoxView
-│   └── PencilKitOverlayManager.swift     — standalone PencilKit canvas integration
-├── ImageEditor/
-│   ├── ImageEditorView.swift             — image editing pipeline (SwiftUI + UIKit)
-│   └── ImageEditorViewModel.swift        — image editor state and undo/redo
+├── PDFEditorSDK.swift                    — public entry points (PDFEditorView, static utilities)
+├── PDFEditor/
+│   ├── Canvas/                           — PDFKit canvas, overlay views, Pencil gestures, PencilKit integration
+│   ├── Rendering/                        — overlay annotation and flattening renderer
+│   ├── ViewModels/                       — editing state, undo/redo, save/export logic
+│   └── Views/                            — SwiftUI editor shell, toolbar, browser, settings, thumbnails
+├── Shared/
+│   ├── Media/                            — camera/photo picker and crop controller for PDF image overlays
+│   ├── Models/                           — editor tools, overlay state, metadata, undo, Pencil gestures
+│   ├── Preferences/                      — UserDefaults persistence for tool settings
+│   └── UIKitBridges/                     — reusable UIKit controller bridges
 └── Support/
     └── Styling/                          — shared view modifiers
 ```
@@ -174,7 +170,7 @@ The toolbar uses a **tap + long-press** interaction model:
 
 ## Apple Pencil Gestures
 
-Both the PDF Editor and Image Editor support configurable hardware gestures for compatible Apple Pencil models. Gesture assignments are shared between both editors and persisted to `UserDefaults` — users only need to configure them once.
+The PDF editor supports configurable hardware gestures for compatible Apple Pencil models. Gesture assignments are persisted to `UserDefaults`.
 
 ### Supported hardware
 
@@ -298,88 +294,6 @@ This is the recommended approach for uploading a PDF to a server or database. Ke
 
 > **Note:** The returned URL points to a UUID-namespaced temporary file. It is not cleaned up automatically — copy or move it before calling `flattenedPDF(from:)` again, or before the process exits.
 
----
-
-## Image Editor
-
-### What it does
-
-- Accepts any `UIImage` or raw `Data` as the canvas background
-- **Freehand drawing** — Apple Pencil or finger, with adjustable colour and line weight
-- **Standalone eraser** — dedicated tool with configurable size; no longer nested under the Draw tool
-- **Text overlays** — drag-to-create text boxes with font size, bold, text colour, and background colour
-- **Shape overlays** — circles, rectangles, and triangles; can be drawn over existing annotations
-- **Image overlays** — pick from Camera or Photo Library, then drag and pinch-resize; configurable border
-- **Apple PencilKit mode** — native PencilKit brushes captured as image overlays
-- **Select mode** — tap to select any overlay, drag to move, resize, delete; configure image borders inline
-- **Pencil-only annotation mode** — all annotation tools respond only to Apple Pencil; finger navigates freely
-- **Draw with Finger mode** — single finger draws; two fingers scroll
-- **Apple Pencil gesture mapping** — same configurable double-tap and squeeze actions as the PDF editor; shared settings apply to both
-- **Tool settings persistence** — all settings are remembered between sessions
-- All drawing and overlays are constrained to the image content area
-- Full undo / redo (up to 50 steps)
-- Export flattens everything into a single `UIImage`
-
-### Basic usage
-
-```swift
-import PDFEditorSDK
-import SwiftUI
-
-struct MyImageEditorScreen: View {
-    let photo: UIImage
-
-    var body: some View {
-        NavigationStack {
-            ImageEditorView(image: photo)
-        }
-    }
-}
-```
-
-### Save and export
-
-```swift
-ImageEditorView(
-    image: photo,
-    onSave: { savedImage in
-        // Called when the user taps Save.
-        // savedImage is a flattened UIImage with all annotations burned in.
-        UIImageWriteToSavedPhotosAlbum(savedImage, nil, nil, nil)
-    },
-    onExport: { exportedImage in
-        // Called when the user taps Share.
-        // The share sheet is shown automatically.
-        print("Exported: \(exportedImage.size)")
-    }
-)
-```
-
-Both callbacks are optional. Omitting `onSave` saves to `Documents/ImageEdits/`; omitting `onExport` still shows the share sheet.
-
-### Initialising from `Data`
-
-```swift
-ImageEditorView(imageData: imageData) { exportedImage in
-    // handle export
-}
-```
-
-### Toolbar overview
-
-| Section | Tap | Long-press settings |
-|---|---|---|
-| **Select** | Activate select mode. Sub-tools expand inline when an object is selected. | — |
-| **Draw** | Activate freehand drawing. | Colour picker, line weight |
-| **Erase** | Activate standalone eraser. | Eraser size |
-| **Text** | Drag on the image to draw a text box. | Text colour, background colour, font size, bold |
-| **Shape** | Draw the last-used shape type. | Shape picker, stroke colour, line weight |
-| **Image** | Add a photo from Camera or Photo Library. | — |
-| **Pencil** | Activate native PencilKit mode. | — |
-| **Settings** | Open the input-mode and Pencil Gestures settings popover. | — |
-
----
-
 ## Changelog
 
 ### v1.2.2
@@ -394,7 +308,7 @@ ImageEditorView(imageData: imageData) { exportedImage in
 
 ### v2.1.0
 
-- **Apple Pencil gesture mapping** — users can now assign custom actions to Apple Pencil hardware gestures directly from the Settings popover in both the PDF Editor and Image Editor. Three gestures are supported: **Double Tap** (Pencil 2 and Pro), **Single Squeeze** (Pencil Pro), and **Double Squeeze** (Pencil Pro). Each gesture can be independently mapped to Toggle Eraser, Switch to Last Tool, Select, Draw, Eraser, Text, Shape, Undo, Redo, or None.
+- **Apple Pencil gesture mapping** — users can assign custom actions to Apple Pencil hardware gestures directly from the Settings popover. Three gestures are supported: **Double Tap** (Pencil 2 and Pro), **Single Squeeze** (Pencil Pro), and **Double Squeeze** (Pencil Pro). Each gesture can be independently mapped to Toggle Eraser, Switch to Last Tool, Select, Draw, Eraser, Text, Shape, Undo, Redo, or None.
 
 - **Tool switching via gesture** — the new gesture actions include direct activation of Select, Draw, Eraser, Text, and Shape tools, plus a Switch to Last Tool action that returns to the previously active tool. Combined with Toggle Eraser this gives Pencil users fast one-handed tool swapping without touching the toolbar.
 
@@ -406,7 +320,7 @@ ImageEditorView(imageData: imageData) { exportedImage in
 
 ### v2.0.0
 
-- **Standalone Eraser tool** — the eraser is now its own first-class tool (`EditorTool.erase`) in both editors. Tap **Erase** to activate; long-press to choose eraser size. It no longer lives inside the Draw tool's state, making it simpler and more predictable to activate.
+- **Standalone Eraser tool** — the eraser is now its own first-class tool (`EditorTool.erase`). Tap **Erase** to activate; long-press to choose eraser size. It no longer lives inside the Draw tool's state, making it simpler and more predictable to activate.
 
 - **Long-press toolbar popovers** — all tool buttons now use a tap-to-activate / long-press-to-configure interaction. Each tool's settings (colour, weight, shape type, font size, eraser size) open in a dedicated popover instead of an expanding inline row. This keeps the toolbar compact and always visible without horizontal scrolling through sub-tools.
 
@@ -414,7 +328,7 @@ ImageEditorView(imageData: imageData) { exportedImage in
 
 - **Draw and Erase over existing annotations** — shapes and text boxes can now be created on top of existing overlay objects. Previously, starting a shape or text-box drag on top of an existing overlay was blocked.
 
-- **Apple Pencil-only annotation mode** — a new **Settings** button in the toolbar opens an input-mode popover. Enabling **Pencil Only** restricts all annotation tools (draw, erase, shape, text) to Apple Pencil input. Finger touches scroll and zoom the document or image freely in all tool modes. This works correctly in text mode (pencil tap-to-edit, pencil drag-to-create; finger scrolls), shape mode (pencil draws, finger scrolls), and draw/erase mode.
+- **Apple Pencil-only annotation mode** — a new **Settings** button in the toolbar opens an input-mode popover. Enabling **Pencil Only** restricts all annotation tools (draw, erase, shape, text) to Apple Pencil input. Finger touches scroll and zoom the document freely in all tool modes. This works correctly in text mode (pencil tap-to-edit, pencil drag-to-create; finger scrolls), shape mode (pencil draws, finger scrolls), and draw/erase mode.
 
 - **Draw with Finger mode** — enabling **Draw with Finger** (mutually exclusive with Pencil Only) lets a single finger draw ink strokes while two fingers handle navigation.
 
@@ -432,9 +346,9 @@ ImageEditorView(imageData: imageData) { exportedImage in
 
 - **Page management** (PDF Editor) — **Add** inserts a blank page after the current one; **Remove** deletes the current page with confirmation. Both are fully undoable.
 
-- **Image borders** — image overlays in both editors support configurable border width and colour, burned into the flattened export.
+- **Image borders** — image overlays support configurable border width and colour, burned into the flattened export.
 
-- **Shape overlays** — circle, rectangle, and triangle shapes as vector overlays in both the PDF and Image editors, with stroke colour and line weight controls and full undo/redo.
+- **Shape overlays** — circle, rectangle, and triangle shapes as vector PDF overlays, with stroke colour and line weight controls and full undo/redo.
 
 - **White background for text boxes** — the background-colour picker for text boxes includes a White option.
 
