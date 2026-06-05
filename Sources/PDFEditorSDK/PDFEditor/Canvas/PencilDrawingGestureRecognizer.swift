@@ -14,7 +14,7 @@ protocol PencilDrawingGestureDelegate: AnyObject {
     func pencilTouchCancelled(with event: UIEvent?)
 }
 
-class PencilDrawingGestureRecognizer: UIGestureRecognizer {
+final class PencilDrawingGestureRecognizer: UIGestureRecognizer {
     weak var drawingDelegate: PencilDrawingGestureDelegate?
 
     /// When `true`, single-finger touches are also accepted for drawing in

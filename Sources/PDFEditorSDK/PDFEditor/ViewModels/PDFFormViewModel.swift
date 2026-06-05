@@ -12,7 +12,7 @@ import UIKit
 // MARK: - View Model
 @MainActor
 @Observable
-class PDFFormViewModel {
+final class PDFFormViewModel {
     var preferences: EditorPreferences
 
     func persistPreferences() {
