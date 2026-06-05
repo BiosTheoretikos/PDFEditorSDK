@@ -80,7 +80,7 @@ final class ImageCropViewController: UIViewController {
             title: "Cancel", style: .plain, target: self, action: #selector(cancelTapped)
         )
         navigationItem.rightBarButtonItem = UIBarButtonItem(
-            title: "Use Photo", style: .done, target: self, action: #selector(confirmTapped)
+            title: "Use Photo", style: .prominent, target: self, action: #selector(confirmTapped)
         )
     }
 

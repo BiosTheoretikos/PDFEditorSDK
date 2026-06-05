@@ -74,16 +74,19 @@ final class PencilKitOverlayManager: NSObject {
 
         // MARK: Done button
         let btn = UIButton(type: .system)
-        btn.setTitle("Done", for: .normal)
-        btn.titleLabel?.font = .systemFont(ofSize: 15, weight: .semibold)
-        btn.setTitleColor(.white, for: .normal)
-        btn.backgroundColor = .systemBlue
-        btn.layer.cornerRadius = 10
+        var configuration = UIButton.Configuration.filled()
+        var title = AttributedString("Done")
+        title.font = .systemFont(ofSize: 15, weight: .semibold)
+        configuration.attributedTitle = title
+        configuration.baseForegroundColor = .white
+        configuration.baseBackgroundColor = .systemBlue
+        configuration.background.cornerRadius = 10
+        configuration.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 18, bottom: 8, trailing: 18)
+        btn.configuration = configuration
         btn.layer.shadowColor = UIColor.black.cgColor
         btn.layer.shadowOpacity = 0.18
         btn.layer.shadowOffset = CGSize(width: 0, height: 2)
         btn.layer.shadowRadius = 4
-        btn.contentEdgeInsets = UIEdgeInsets(top: 8, left: 18, bottom: 8, right: 18)
         btn.addTarget(self, action: #selector(handleDoneTapped), for: .touchUpInside)
         btn.sizeToFit()
 
@@ -144,7 +147,7 @@ final class PencilKitOverlayManager: NSObject {
 
         // Crop to the actual drawn area within the canvas coordinate space
         let strokeBounds = drawing.bounds
-        let scale = UIScreen.main.scale
+        let scale = canvas.window?.windowScene?.screen.scale ?? canvas.traitCollection.displayScale
         let image = drawing.image(from: strokeBounds, scale: scale)
 
         // PNG preserves the transparent background — JPEG would turn it black

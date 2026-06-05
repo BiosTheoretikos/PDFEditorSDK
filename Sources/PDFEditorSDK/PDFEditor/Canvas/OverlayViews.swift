@@ -1508,7 +1508,7 @@ extension DrawingPDFView {
 
 extension CGPath {
     func forEach(_ body: @escaping (CGPathElement) -> Void) {
-        var body = body
+        let body = body
         applyWithBlock { elementPointer in
             body(elementPointer.pointee)
         }
