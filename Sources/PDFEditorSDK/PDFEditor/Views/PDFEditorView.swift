@@ -216,7 +216,7 @@ struct PDFFormEditorView: View {
                             url = viewModel.exportEditablePDF()
                         }
                         if let url {
-                            presentShareSheet(url: url)
+                            PDFSharePresenter.present(url: url)
                         } else {
                             isShowingExportAlert = true
                         }
@@ -573,47 +573,6 @@ struct PDFFormEditorView: View {
         .animation(.easeInOut(duration: 0.2), value: viewModel.activeTool)
         .animation(.easeInOut(duration: 0.2), value: viewModel.selectedOverlayKind)
         .contentBackgroundModifier()
-    }
-
-    /// Presents a `UIActivityViewController` directly via UIKit, bypassing SwiftUI's
-    /// `.sheet()` system. This is necessary because:
-    ///
-    /// 1. SwiftUI cannot reliably stack a second sheet when the editor is itself
-    ///    already presented in a sheet — the inner sheet is silently dropped.
-    /// 2. On iPad, `UIActivityViewController` must be presented as a popover with
-    ///    a configured `sourceView`; wrapping it in a SwiftUI sheet skips that
-    ///    configuration and the share sheet never appears.
-    ///
-    /// Walks the view controller hierarchy to the topmost presented controller so
-    /// it works correctly regardless of how many sheets are stacked above the root.
-    private func presentShareSheet(url: URL) {
-        let activityVC = UIActivityViewController(activityItems: [url], applicationActivities: nil)
-
-        guard
-            let windowScene = UIApplication.shared.connectedScenes
-                .first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene,
-            let window = windowScene.keyWindow,
-            let rootVC = window.rootViewController
-        else { return }
-
-        var topVC = rootVC
-        while let presented = topVC.presentedViewController {
-            topVC = presented
-        }
-
-        // iPad: UIActivityViewController must declare a popover source or it
-        // silently does nothing. Centre it on screen with no arrow.
-        if let popover = activityVC.popoverPresentationController {
-            popover.sourceView = topVC.view
-            popover.sourceRect = CGRect(
-                x: topVC.view.bounds.midX,
-                y: topVC.view.bounds.midY,
-                width: 0, height: 0
-            )
-            popover.permittedArrowDirections = []
-        }
-
-        topVC.present(activityVC, animated: true)
     }
 
     private func isActiveAnnotationTool(_ tool: EditorTool) -> Bool {
