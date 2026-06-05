@@ -39,12 +39,6 @@ enum LineWidthInputStyle: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-/// Which editor surface persists preferences (PDF vs image).
-enum EditorPreferencesScope: String, CaseIterable {
-    case pdf
-    case image
-}
-
 struct EditorPreferences: Codable {
     //Drawing
     var inkColor: RGBAColor = RGBAColor(r: 0, g: 0.48, b: 1, a: 1) //System Blue
@@ -98,16 +92,9 @@ struct EditorPreferences: Codable {
     /// Upper bound in points for stepper mode (clamped when saving).
     var lineWidthMax: CGFloat = 24
 
-    /// Pre-scoped storage; migrated once into per-scope keys.
-    private static let legacyUserDefaultsKey = "com.pdfeditor.editorPreferences"
-    private static let legacyMigratedKey = "com.pdfeditor.editorPreferences.legacyMigrated"
-
-    static func userDefaultsKey(for scope: EditorPreferencesScope) -> String {
-        switch scope {
-        case .pdf: return "com.pdfeditor.editorPreferences.pdf"
-        case .image: return "com.pdfeditor.editorPreferences.image"
-        }
-    }
+    private static let userDefaultsKey = "com.pdfeditor.editorPreferences"
+    private static let previousScopedPDFKey = "com.pdfeditor.editorPreferences.pdf"
+    private static let migrationKey = "com.pdfeditor.editorPreferences.pdfOnlyMigrated"
 
     private enum CodingKeys: String, CodingKey {
         case inkColor, inkLineWidth, eraserRadius
@@ -212,44 +199,36 @@ struct EditorPreferences: Codable {
     }
 
     private static func migrateLegacyPreferencesIfNeeded() {
-        if UserDefaults.standard.bool(forKey: legacyMigratedKey) { return }
+        if UserDefaults.standard.bool(forKey: migrationKey) { return }
 
-        guard let legacyData = UserDefaults.standard.data(forKey: legacyUserDefaultsKey) else {
-            UserDefaults.standard.set(true, forKey: legacyMigratedKey)
+        if UserDefaults.standard.data(forKey: userDefaultsKey) != nil {
+            UserDefaults.standard.set(true, forKey: migrationKey)
             return
         }
 
-        guard let prefs = try? JSONDecoder().decode(EditorPreferences.self, from: legacyData) else {
-            UserDefaults.standard.removeObject(forKey: legacyUserDefaultsKey)
-            UserDefaults.standard.set(true, forKey: legacyMigratedKey)
+        if let pdfData = UserDefaults.standard.data(forKey: previousScopedPDFKey) {
+            UserDefaults.standard.set(pdfData, forKey: userDefaultsKey)
+            UserDefaults.standard.set(true, forKey: migrationKey)
             return
         }
 
-        for scope in EditorPreferencesScope.allCases {
-            let key = userDefaultsKey(for: scope)
-            if UserDefaults.standard.data(forKey: key) == nil {
-                prefs.save(scope: scope)
-            }
-        }
-        UserDefaults.standard.removeObject(forKey: legacyUserDefaultsKey)
-        UserDefaults.standard.set(true, forKey: legacyMigratedKey)
+        UserDefaults.standard.set(true, forKey: migrationKey)
     }
 
-    static func load(scope: EditorPreferencesScope) -> EditorPreferences {
+    static func load() -> EditorPreferences {
         migrateLegacyPreferencesIfNeeded()
-        let key = userDefaultsKey(for: scope)
-        guard let data = UserDefaults.standard.data(forKey: key),
+        guard let data = UserDefaults.standard.data(forKey: userDefaultsKey),
               let prefs = try? JSONDecoder().decode(EditorPreferences.self, from: data) else {
             return EditorPreferences()
         }
         return prefs
     }
 
-    func save(scope: EditorPreferencesScope) {
+    func save() {
         var copy = self
         copy.normalizeLineWidthControlFields()
         guard let data = try? JSONEncoder().encode(copy) else { return }
-        UserDefaults.standard.set(data, forKey: Self.userDefaultsKey(for: scope))
+        UserDefaults.standard.set(data, forKey: Self.userDefaultsKey)
     }
 }
 

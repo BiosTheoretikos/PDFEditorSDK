@@ -15,10 +15,9 @@ import CoreText
 @Observable
 class PDFFormViewModel {
     private var preferences: EditorPreferences
-    private let preferencesScope: EditorPreferencesScope = .pdf
 
     private func persistPreferences() {
-        preferences.save(scope: preferencesScope)
+        preferences.save()
     }
     var pdfDocument: PDFDocument?
     var activeTool: EditorTool = .form
@@ -172,7 +171,7 @@ class PDFFormViewModel {
         self.flattenedExportHandler = flattenedExportHandler
         self.shouldHighlightFormField = shouldHighlightFormField
         
-        let prefs = EditorPreferences.load(scope: preferencesScope)
+        let prefs = EditorPreferences.load()
         self.preferences = prefs
         
         self.inkColor = prefs.inkColor.uiColor
