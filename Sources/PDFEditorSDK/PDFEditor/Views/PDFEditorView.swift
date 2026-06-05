@@ -116,12 +116,7 @@ struct PDFFormEditorView: View {
             }
             .alert("Unsaved Changes", isPresented: $changesNotSaved) {
                 Button("Save Changes") {
-                    viewModel.savePDF()
-                    if let onSaveNavigate {
-                        onSaveNavigate()
-                    } else {
-                        dismiss()
-                    }
+                    saveAndClose()
                 }
                 Button("Discard & Close", role: .destructive) {
                     dismiss()
@@ -130,6 +125,47 @@ struct PDFFormEditorView: View {
             } message: {
                 Text("You have unsaved changes. Would you like to save before closing?")
             }
+    }
+
+    private func saveAndClose() {
+        do {
+            try viewModel.savePDF()
+            if let onSaveNavigate {
+                onSaveNavigate()
+            } else {
+                dismiss()
+            }
+        } catch {
+            viewModel.saveStatus = error.localizedDescription
+            isShowingSaveAlert = true
+        }
+    }
+
+    private func saveFromToolbar() {
+        do {
+            try viewModel.savePDF()
+            if showsSaveAlert { isShowingSaveAlert = true }
+            onSaveNavigate?()
+        } catch {
+            viewModel.saveStatus = error.localizedDescription
+            isShowingSaveAlert = true
+        }
+    }
+
+    private func sharePDF(mode: ShareExportMode) {
+        do {
+            let url: URL
+            switch mode {
+            case .flattened:
+                url = try viewModel.exportFlattenedPDF()
+            case .original:
+                url = try viewModel.exportEditablePDF()
+            }
+            PDFSharePresenter.present(url: url)
+        } catch {
+            viewModel.exportStatus = error.localizedDescription
+            isShowingExportAlert = true
+        }
     }
 
     private var coreEditorView: some View {
@@ -193,9 +229,7 @@ struct PDFFormEditorView: View {
                 .disabled(!viewModel.canRedo)
 
                 Button {
-                    viewModel.savePDF()
-                    if showsSaveAlert { isShowingSaveAlert = true }
-                    onSaveNavigate?()
+                    saveFromToolbar()
                 } label: {
                     Text("Save")
                 }
@@ -208,18 +242,7 @@ struct PDFFormEditorView: View {
                 .popover(isPresented: $showShareOptions, arrowEdge: .top) {
                     ShareExportPopover { mode in
                         showShareOptions = false
-                        let url: URL?
-                        switch mode {
-                        case .flattened:
-                            url = viewModel.exportFlattenedPDF()
-                        case .original:
-                            url = viewModel.exportEditablePDF()
-                        }
-                        if let url {
-                            PDFSharePresenter.present(url: url)
-                        } else {
-                            isShowingExportAlert = true
-                        }
+                        sharePDF(mode: mode)
                     }
                 }
             }

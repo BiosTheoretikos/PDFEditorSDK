@@ -17,9 +17,9 @@ enum PDFGeneratedFileStore {
             .appendingPathComponent(fileName)
     }
 
-    static func prepareStagingURL(fileName: String) -> URL {
+    static func prepareStagingURL(fileName: String) throws -> URL {
         let url = stagingURL(fileName: fileName)
-        try? FileManager.default.createDirectory(
+        try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(),
             withIntermediateDirectories: true,
             attributes: nil

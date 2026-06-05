@@ -256,7 +256,7 @@ PDFEditorView(
 
 ## Static utilities
 
-`PDFEditorSDK` exposes two static methods that work directly on saved editable PDF files — no editor view required. Both are safe to call from a background thread.
+`PDFEditorSDK` exposes two throwing static methods that work directly on saved editable PDF files — no editor view required. Both are safe to call from a background thread and preserve failure reasons through `PDFEditorError` or file-system errors.
 
 ### `thumbnail(for:pageIndex:size:)`
 
@@ -265,12 +265,15 @@ Generates a thumbnail `UIImage` for one page of an editable PDF, including all o
 A plain `PDFPage.draw()` call only renders native PDF annotations such as ink strokes. Shapes, text boxes, and images are stored as invisible metadata annotations inside the editable file and are invisible to any external renderer. This method decodes that metadata and draws the overlays on top, producing a correct thumbnail without needing the editor view.
 
 ```swift
-// Replace your plain PDFPage.draw() thumbnail with this:
-let thumbnail = PDFEditorSDK.thumbnail(
-    for: editableURL,
-    pageIndex: 0,
-    size: CGSize(width: 120, height: 160)
-)
+do {
+    let thumbnail = try PDFEditorSDK.thumbnail(
+        for: editableURL,
+        pageIndex: 0,
+        size: CGSize(width: 120, height: 160)
+    )
+} catch {
+    // Inspect or display error.localizedDescription.
+}
 ```
 
 The `pageIndex` parameter defaults to `0` so you can omit it for single-page documents.
@@ -282,9 +285,12 @@ The `pageIndex` parameter defaults to `0` so you can omit it for single-page doc
 Produces a fully flattened PDF from an editable file. All overlays — shapes, text boxes, images, ink drawings, and filled form fields — are burned into the output as static PDF content. The resulting file can be opened in any PDF viewer without this SDK.
 
 ```swift
-if let flatURL = PDFEditorSDK.flattenedPDF(from: editableURL) {
+do {
+    let flatURL = try PDFEditorSDK.flattenedPDF(from: editableURL)
     // flatURL is in FileManager.temporaryDirectory — move or copy it before the next call.
     try FileManager.default.copyItem(at: flatURL, to: myDestinationURL)
+} catch {
+    // Inspect or display error.localizedDescription.
 }
 ```
 

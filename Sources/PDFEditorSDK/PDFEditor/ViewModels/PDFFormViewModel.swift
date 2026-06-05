@@ -709,8 +709,12 @@ class PDFFormViewModel {
     }
 
     @discardableResult
-    func savePDF() -> URL? {
-        guard pdfDocument != nil else { return nil }
+    func savePDF() throws -> URL {
+        guard pdfDocument != nil else {
+            let error = PDFEditorError.documentNotLoaded
+            saveStatus = error.localizedDescription
+            throw error
+        }
 
         // Commit any in-progress form field edit so PDFKit generates a current
         // appearance stream before writing. Without this, a field that is still
@@ -723,16 +727,18 @@ class PDFFormViewModel {
         // third-party readers can see overlays without polluting PDFKit's live
         // editor render cache with temporary stamp appearances.
         guard let editableDocument = pdfView?.editableExportDocumentCopy() else {
-            saveStatus = "Failed to save PDF"
-            return nil
+            let error = PDFEditorError.exportDocumentUnavailable
+            saveStatus = error.localizedDescription
+            throw error
         }
 
         let fileName = PDFGeneratedFileStore.defaultFileName(for: .editable, sourceURL: currentDocumentURL)
-        let stagingURL = PDFGeneratedFileStore.prepareStagingURL(fileName: fileName)
+        let stagingURL = try PDFGeneratedFileStore.prepareStagingURL(fileName: fileName)
 
         guard editableDocument.write(to: stagingURL) else {
-            saveStatus = "Failed to save PDF"
-            return nil
+            let error = PDFEditorError.documentWriteFailed(stagingURL)
+            saveStatus = error.localizedDescription
+            throw error
         }
 
         do {
@@ -751,8 +757,9 @@ class PDFFormViewModel {
             saveStatus = "Saved to: \(finalURL.lastPathComponent)"
             return finalURL
         } catch {
-            saveStatus = "Failed to save PDF"
-            return nil
+            let wrappedError = PDFEditorError.generatedFileFinalizationFailed(error.localizedDescription)
+            saveStatus = wrappedError.localizedDescription
+            throw wrappedError
         }
     }
     
@@ -761,35 +768,39 @@ class PDFFormViewModel {
     /// Always writes to a fresh temp URL so the system share sheet can read the
     /// file regardless of where the host app's save handler would normally put it.
     /// Does not modify currentDocumentURL / lastSavedURL.
-    func exportEditablePDF() -> URL? {
+    func exportEditablePDF() throws -> URL {
         guard pdfDocument != nil else {
-            exportStatus = "Failed to export PDF"
-            return nil
+            let error = PDFEditorError.documentNotLoaded
+            exportStatus = error.localizedDescription
+            throw error
         }
 
         pdfView?.commitActiveFormWidgetTextToAnnotations()
         pdfView?.endEditing(true)
 
         guard let editableDocument = pdfView?.editableExportDocumentCopy() else {
-            exportStatus = "Failed to export PDF"
-            return nil
+            let error = PDFEditorError.exportDocumentUnavailable
+            exportStatus = error.localizedDescription
+            throw error
         }
 
         let fileName = PDFGeneratedFileStore.defaultFileName(for: .editable, sourceURL: currentDocumentURL)
-        let tempURL = PDFGeneratedFileStore.prepareStagingURL(fileName: fileName)
+        let tempURL = try PDFGeneratedFileStore.prepareStagingURL(fileName: fileName)
 
         guard editableDocument.write(to: tempURL) else {
-            exportStatus = "Failed to export PDF"
-            return nil
+            let error = PDFEditorError.documentWriteFailed(tempURL)
+            exportStatus = error.localizedDescription
+            throw error
         }
         exportStatus = "Ready to share"
         return tempURL
     }
 
-    func exportFlattenedPDF() -> URL? {
+    func exportFlattenedPDF() throws -> URL {
         guard let document = pdfDocument else {
-            exportStatus = "No overlays to export"
-            return nil
+            let error = PDFEditorError.documentNotLoaded
+            exportStatus = error.localizedDescription
+            throw error
         }
 
         // Copy any in-progress PDF widget text into annotations while the hosted
@@ -807,17 +818,15 @@ class PDFFormViewModel {
         pdfView?.endEditing(true)
 
         guard let metadata = pdfView?.overlayMetadataSnapshot() else {
-            exportStatus = "No overlays to export"
-            return nil
+            let error = PDFEditorError.overlayMetadataUnavailable
+            exportStatus = error.localizedDescription
+            throw error
         }
 
         let fileName = PDFGeneratedFileStore.defaultFileName(for: .flattened, sourceURL: currentDocumentURL)
-        let stagingURL = PDFGeneratedFileStore.prepareStagingURL(fileName: fileName)
+        let stagingURL = try PDFGeneratedFileStore.prepareStagingURL(fileName: fileName)
 
-        guard renderFlattenedPDF(document: document, metadata: metadata, destinationURL: stagingURL) else {
-            exportStatus = "Failed to export PDF"
-            return nil
-        }
+        try renderFlattenedPDF(document: document, metadata: metadata, destinationURL: stagingURL)
 
         do {
             let finalURL = try PDFGeneratedFileStore.finalize(
@@ -833,8 +842,9 @@ class PDFFormViewModel {
             exportStatus = "Exported to: \(finalURL.lastPathComponent)"
             return finalURL
         } catch {
-            exportStatus = "Failed to export PDF"
-            return nil
+            let wrappedError = PDFEditorError.generatedFileFinalizationFailed(error.localizedDescription)
+            exportStatus = wrappedError.localizedDescription
+            throw wrappedError
         }
     }
     
@@ -842,8 +852,12 @@ class PDFFormViewModel {
         document: PDFDocument,
         metadata: OverlayDocumentMetadata,
         destinationURL: URL
-    ) -> Bool {
-        guard document.pageCount > 0 else { return false }
+    ) throws {
+        guard document.pageCount > 0 else {
+            let error = PDFEditorError.emptyDocument(currentDocumentURL)
+            exportStatus = error.localizedDescription
+            throw error
+        }
         let firstBounds = document.page(at: 0)?.bounds(for: .mediaBox) ?? CGRect(x: 0, y: 0, width: 612, height: 792)
         let format = UIGraphicsPDFRendererFormat()
         format.documentInfo = PDFOverlayRenderer.pdfDocumentInfo(from: document)
@@ -858,9 +872,10 @@ class PDFFormViewModel {
                                                   into: context.cgContext, bounds: bounds)
                 }
             }
-            return true
         } catch {
-            return false
+            let error = PDFEditorError.flattenedRenderFailed(destinationURL)
+            exportStatus = error.localizedDescription
+            throw error
         }
     }
     

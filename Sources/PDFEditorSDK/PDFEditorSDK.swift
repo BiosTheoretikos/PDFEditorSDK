@@ -53,10 +53,18 @@ public enum PDFEditorSDK {
     ///   - url: URL of an editable PDF produced by this SDK.
     ///   - pageIndex: Zero-based index of the page to render. Defaults to `0`.
     ///   - size: The pixel dimensions of the returned image.
-    /// - Returns: A rendered `UIImage`, or `nil` if the document could not be loaded.
-    public static func thumbnail(for url: URL, pageIndex: Int = 0, size: CGSize) -> UIImage? {
-        guard let document = PDFDocument(url: url),
-              let page = document.page(at: pageIndex) else { return nil }
+    /// - Returns: A rendered `UIImage`.
+    /// - Throws: `PDFEditorError` when the document, page, or render size is invalid.
+    public static func thumbnail(for url: URL, pageIndex: Int = 0, size: CGSize) throws -> UIImage {
+        guard size.width > 0, size.height > 0 else {
+            throw PDFEditorError.invalidRenderSize(size)
+        }
+        guard let document = PDFDocument(url: url) else {
+            throw PDFEditorError.documentLoadFailed(url)
+        }
+        guard let page = document.page(at: pageIndex) else {
+            throw PDFEditorError.pageNotFound(index: pageIndex)
+        }
         let metadata = PDFOverlayRenderer.readOverlayMetadata(from: document)
         let bounds = page.bounds(for: .mediaBox)
         let scale = min(size.width / bounds.width, size.height / bounds.height)
@@ -79,10 +87,16 @@ public enum PDFEditorSDK {
     /// opened in any PDF viewer without needing the SDK.
     ///
     /// - Parameter url: URL of an editable PDF produced by this SDK.
-    /// - Returns: A URL to a temporary file containing the flattened PDF, or `nil` on failure.
+    /// - Returns: A URL to a temporary file containing the flattened PDF.
     ///   Copy or move this file before the next call; it lives in `FileManager.temporaryDirectory`.
-    public static func flattenedPDF(from url: URL) -> URL? {
-        guard let document = PDFDocument(url: url), document.pageCount > 0 else { return nil }
+    /// - Throws: `PDFEditorError` or a file-system error if generation fails.
+    public static func flattenedPDF(from url: URL) throws -> URL {
+        guard let document = PDFDocument(url: url) else {
+            throw PDFEditorError.documentLoadFailed(url)
+        }
+        guard document.pageCount > 0 else {
+            throw PDFEditorError.emptyDocument(url)
+        }
         let metadata = PDFOverlayRenderer.readOverlayMetadata(from: document)
 
         let baseName = url.deletingPathExtension().lastPathComponent
@@ -90,7 +104,7 @@ public enum PDFEditorSDK {
         let outputURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
             .appendingPathComponent(fileName)
-        try? FileManager.default.createDirectory(
+        try FileManager.default.createDirectory(
             at: outputURL.deletingLastPathComponent(),
             withIntermediateDirectories: true,
             attributes: nil
@@ -102,24 +116,20 @@ public enum PDFEditorSDK {
         format.documentInfo = PDFOverlayRenderer.pdfDocumentInfo(from: document)
         let renderer = UIGraphicsPDFRenderer(bounds: firstBounds, format: format)
 
-        do {
-            try renderer.writePDF(to: outputURL) { context in
-                for pageIndex in 0..<document.pageCount {
-                    guard let page = document.page(at: pageIndex) else { continue }
-                    let bounds = page.bounds(for: .mediaBox)
-                    context.beginPage(withBounds: bounds, pageInfo: [:])
-                    // applyFormFieldOverlay: false — the file was already written by PDFKit so
-                    // all appearance streams are committed. page.draw() renders them correctly,
-                    // and skipping the white-fill pass keeps ink strokes intact over form fields.
-                    PDFOverlayRenderer.renderPage(page, pageIndex: pageIndex, metadata: metadata,
-                                                  into: context.cgContext, bounds: bounds,
-                                                  applyFormFieldOverlay: false)
-                }
+        try renderer.writePDF(to: outputURL) { context in
+            for pageIndex in 0..<document.pageCount {
+                guard let page = document.page(at: pageIndex) else { continue }
+                let bounds = page.bounds(for: .mediaBox)
+                context.beginPage(withBounds: bounds, pageInfo: [:])
+                // applyFormFieldOverlay: false — the file was already written by PDFKit so
+                // all appearance streams are committed. page.draw() renders them correctly,
+                // and skipping the white-fill pass keeps ink strokes intact over form fields.
+                PDFOverlayRenderer.renderPage(page, pageIndex: pageIndex, metadata: metadata,
+                                              into: context.cgContext, bounds: bounds,
+                                              applyFormFieldOverlay: false)
             }
-            return outputURL
-        } catch {
-            return nil
         }
+        return outputURL
     }
 }
 
