@@ -13,9 +13,6 @@ import UIKit
 protocol PencilGestureHandler: AnyObject {
     var activeTool: EditorTool { get set }
     var previousTool: EditorTool? { get set }
-    var pencilDoubleTapAction: PencilGestureAction { get }
-    var pencilSqueezeAction: PencilGestureAction { get }
-    var pencilDoubleSqueezeAction: PencilGestureAction { get }
     func undo()
     func redo()
     func setTool(_ tool: EditorTool)

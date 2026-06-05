@@ -9,65 +9,6 @@ import SwiftUI
 import PDFKit
 import UIKit
 
-// MARK: - Pencil Drawing Gesture Recognizer
-
-protocol PencilDrawingGestureDelegate: AnyObject {
-    func pencilTouchBegan(_ touch: UITouch, with event: UIEvent?)
-    func pencilTouchMoved(_ touch: UITouch, with event: UIEvent?)
-    func pencilTouchEnded(_ touch: UITouch, with event: UIEvent?)
-    func pencilTouchCancelled(with event: UIEvent?)
-}
-
-class PencilDrawingGestureRecognizer: UIGestureRecognizer {
-    weak var drawingDelegate: PencilDrawingGestureDelegate?
-
-    /// When `true`, single-finger touches are also accepted for drawing in
-    /// addition to Apple Pencil. Updating this property also updates
-    /// `allowedTouchTypes` so UIKit routes the right events.
-    var includesFingerInput: Bool = false {
-        didSet {
-            allowedTouchTypes = includesFingerInput
-                ? [NSNumber(value: UITouch.TouchType.pencil.rawValue),
-                   NSNumber(value: UITouch.TouchType.direct.rawValue)]
-                : [NSNumber(value: UITouch.TouchType.pencil.rawValue)]
-        }
-    }
-
-    override init(target: Any?, action: Selector?) {
-        super.init(target: target, action: action)
-        allowedTouchTypes = [NSNumber(value: UITouch.TouchType.pencil.rawValue)]
-    }
-
-    private func isValidTouch(_ touch: UITouch) -> Bool {
-        touch.type == .pencil || (includesFingerInput && touch.type == .direct)
-    }
-
-    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
-        guard let touch = touches.first, isValidTouch(touch) else {
-            for touch in touches { ignore(touch, for: event) }
-            return
-        }
-        state = .began
-        drawingDelegate?.pencilTouchBegan(touch, with: event)
-    }
-
-    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
-        guard let touch = touches.first, isValidTouch(touch) else { return }
-        state = .changed
-        drawingDelegate?.pencilTouchMoved(touch, with: event)
-    }
-
-    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
-        guard let touch = touches.first, isValidTouch(touch) else { return }
-        state = .ended
-        drawingDelegate?.pencilTouchEnded(touch, with: event)
-    }
-
-    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
-        state = .cancelled
-        drawingDelegate?.pencilTouchCancelled(with: event)
-    }
-}
 
 // MARK: - Drawing PDF View
 class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, PencilDrawingGestureDelegate {
@@ -579,7 +520,7 @@ class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, PencilDraw
 
     /// Task used to delay firing a single-squeeze action while waiting to see
     /// if a second squeeze arrives (making it a double-squeeze).
-    private var singleSqueezePendingTask: Task<Void, Never>?
+    var singleSqueezePendingTask: Task<Void, Never>?
 
     private func setupPencilInteraction() {
         let interaction = UIPencilInteraction()
@@ -1686,8 +1627,8 @@ class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, PencilDraw
         box.setVerticalAlignment(state.verticalAlignment)
         box.updateBorder(width: state.borderWidth, color: state.borderColor)
         if selectedTextBoxID == state.id {
-            formViewModel?.selectedTextBoxBorderWidth = state.borderWidth
-            formViewModel?.selectedTextBoxBorderColor = state.borderColor
+            formViewModel?.selectedTextBoxBorder.width = state.borderWidth
+            formViewModel?.selectedTextBoxBorder.color = state.borderColor
         }
     }
 
@@ -1712,9 +1653,9 @@ class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, PencilDraw
         deselectInkAnnotation()
         formViewModel?.selectedOverlayKind = .shape
         if let box = shapeBoxViews[id] {
-            formViewModel?.activeShapeKind = box.shapeKind
-            formViewModel?.shapeStrokeColor = box.strokeColor
-            formViewModel?.shapeLineWidth = box.lineWidth
+            formViewModel?.shapeSettings.kind = box.shapeKind
+            formViewModel?.shapeSettings.strokeColor = box.strokeColor
+            formViewModel?.shapeSettings.lineWidth = box.lineWidth
         }
         updateOverlaySelectionUI()
         if let box = shapeBoxViews[id] {
@@ -1753,8 +1694,8 @@ class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, PencilDraw
         )
         addOverlayTextBox(from: state, beginEditing: true)
         selectedTextBoxID = state.id
-        formViewModel?.selectedTextBoxBorderWidth = state.borderWidth
-        formViewModel?.selectedTextBoxBorderColor = state.borderColor
+        formViewModel?.selectedTextBoxBorder.width = state.borderWidth
+        formViewModel?.selectedTextBoxBorder.color = state.borderColor
         formViewModel?.didMakeChange(.overlayTextBox(add: state, remove: nil))
     }
 
@@ -1789,8 +1730,8 @@ class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, PencilDraw
         )
         addOverlayTextBox(from: state, beginEditing: true)
         selectedTextBoxID = state.id
-        formViewModel?.selectedTextBoxBorderWidth = state.borderWidth
-        formViewModel?.selectedTextBoxBorderColor = state.borderColor
+        formViewModel?.selectedTextBoxBorder.width = state.borderWidth
+        formViewModel?.selectedTextBoxBorder.color = state.borderColor
         formViewModel?.didMakeChange(.overlayTextBox(add: state, remove: nil))
     }
 
@@ -1885,8 +1826,8 @@ class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, PencilDraw
             }
         }
         
-        let borderW = formViewModel?.imageBorderWidth ?? 0
-        let borderC = formViewModel?.imageBorderColor ?? .black
+        let borderW = formViewModel?.imageSettings.borderWidth ?? 0
+        let borderC = formViewModel?.imageSettings.borderColor ?? .black
         let state = OverlayImageState(id: UUID(), frame: docRect, imageData: data, borderWidth: borderW, borderColor: borderC)
         addOverlayImage(from: state)
         formViewModel?.didMakeChange(.overlayImage(add: state, remove: removed))
@@ -1970,8 +1911,8 @@ class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, PencilDraw
         deselectInkAnnotation()
         formViewModel?.selectedOverlayKind = .textBox
         if let box = textBoxViews[id] {
-            formViewModel?.selectedTextBoxBorderWidth = box.currentBorderWidth
-            formViewModel?.selectedTextBoxBorderColor = box.currentBorderColor
+            formViewModel?.selectedTextBoxBorder.width = box.currentBorderWidth
+            formViewModel?.selectedTextBoxBorder.color = box.currentBorderColor
             textBoxOverlayView.bringSubviewToFront(box)
         }
         updateOverlaySelectionUI()
@@ -1984,8 +1925,8 @@ class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, PencilDraw
         deselectInkAnnotation()
         formViewModel?.selectedOverlayKind = .image
         if let box = imageBoxViews[id] {
-            formViewModel?.imageBorderWidth = box.imageBorderWidth
-            formViewModel?.imageBorderColor = box.imageBorderColor
+            formViewModel?.imageSettings.borderWidth = box.imageBorderWidth
+            formViewModel?.imageSettings.borderColor = box.imageBorderColor
         }
         updateOverlaySelectionUI()
         if let box = imageBoxViews[id] {
@@ -2469,8 +2410,8 @@ class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, PencilDraw
         let size = CGSize(width: width, height: height)
         
         let frameInDoc = defaultOverlayFrame(size: size)
-        let borderW = formViewModel?.imageBorderWidth ?? 0
-        let borderC = formViewModel?.imageBorderColor ?? .black
+        let borderW = formViewModel?.imageSettings.borderWidth ?? 0
+        let borderC = formViewModel?.imageSettings.borderColor ?? .black
         return OverlayImageState(id: UUID(), frame: frameInDoc, imageData: data, borderWidth: borderW, borderColor: borderC)
     }
     
@@ -3579,51 +3520,3 @@ class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, PencilDraw
     }
 }
 
-// MARK: - UIPencilInteractionDelegate
-
-extension DrawingPDFView: UIPencilInteractionDelegate {
-
-    // MARK: Double Tap
-
-    /// Legacy tap handler — covers iOS < 17.5. Apple Pencil 2 and Pro only.
-    /// On iOS 17.5+ the system calls `pencilInteraction(_:didReceiveTap:)` instead.
-    func pencilInteractionDidTap(_ interaction: UIPencilInteraction) {
-        guard let vm = formViewModel else { return }
-        vm.perform(vm.pencilDoubleTapAction)
-    }
-
-    /// iOS 17.5+ tap handler — supersedes `pencilInteractionDidTap` on iOS 17.5+.
-    /// Handles double-tap on Apple Pencil 2 and Apple Pencil Pro.
-    @available(iOS 17.5, *)
-    func pencilInteraction(_ interaction: UIPencilInteraction,
-                           didReceiveTap tap: UIPencilInteraction.Tap) {
-        guard let vm = formViewModel else { return }
-        vm.perform(vm.pencilDoubleTapAction)
-    }
-
-    // MARK: Squeeze (Apple Pencil Pro, iOS 17.5+)
-
-    /// Detects single and double squeezes.
-    /// - A single squeeze fires after a short delay (to confirm no second squeeze).
-    /// - A second squeeze arriving within that delay cancels the single and fires double.
-    @available(iOS 17.5, *)
-    func pencilInteraction(_ interaction: UIPencilInteraction,
-                           didReceiveSqueeze squeeze: UIPencilInteraction.Squeeze) {
-        guard squeeze.phase == .ended, let vm = formViewModel else { return }
-
-        if singleSqueezePendingTask != nil {
-            // A second squeeze arrived while we were waiting → double squeeze
-            singleSqueezePendingTask?.cancel()
-            singleSqueezePendingTask = nil
-            vm.perform(vm.pencilDoubleSqueezeAction)
-        } else {
-            // First squeeze: wait briefly to confirm no second one follows
-            singleSqueezePendingTask = Task { @MainActor [weak self] in
-                try? await Task.sleep(for: .milliseconds(400))
-                guard let self, !Task.isCancelled else { return }
-                self.singleSqueezePendingTask = nil
-                vm.perform(vm.pencilSqueezeAction)
-            }
-        }
-    }
-}

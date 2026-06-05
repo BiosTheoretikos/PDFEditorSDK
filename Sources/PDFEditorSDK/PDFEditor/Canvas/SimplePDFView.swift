@@ -35,27 +35,27 @@ struct SimplePDFView: UIViewRepresentable {
         pdfView.isTextMode = viewModel.isTextMode
         pdfView.isSelectMode = viewModel.isSelectMode
         pdfView.isFormMode = viewModel.activeTool == .form
-        pdfView.currentInkColor = viewModel.inkColor
-        pdfView.currentLineWidth = viewModel.inkLineWidth
+        pdfView.currentInkColor = viewModel.drawingSettings.inkColor
+        pdfView.currentLineWidth = viewModel.drawingSettings.lineWidth
         pdfView.isEraserMode = viewModel.isEraserMode
-        pdfView.eraserRadius = viewModel.eraserRadius
-        pdfView.textBoxBackgroundColor = viewModel.textBoxBackgroundColor
-        pdfView.textBoxFontSize = viewModel.textBoxFontSize
-        pdfView.textBoxIsBold = viewModel.textBoxIsBold
-        pdfView.textBoxTextColor = viewModel.textBoxTextColor
-        pdfView.textBoxTextAlignment = viewModel.textBoxTextAlignment
-        pdfView.textBoxVerticalAlignment = viewModel.textBoxVerticalAlignment
-        pdfView.textBoxBorderWidth = viewModel.textBoxBorderWidth
-        pdfView.textBoxBorderColor = viewModel.textBoxBorderColor
+        pdfView.eraserRadius = viewModel.drawingSettings.eraserRadius
+        pdfView.textBoxBackgroundColor = viewModel.textSettings.backgroundColor
+        pdfView.textBoxFontSize = viewModel.textSettings.fontSize
+        pdfView.textBoxIsBold = viewModel.textSettings.isBold
+        pdfView.textBoxTextColor = viewModel.textSettings.textColor
+        pdfView.textBoxTextAlignment = viewModel.textSettings.textAlignment
+        pdfView.textBoxVerticalAlignment = viewModel.textSettings.verticalAlignment
+        pdfView.textBoxBorderWidth = viewModel.textSettings.borderWidth
+        pdfView.textBoxBorderColor = viewModel.textSettings.borderColor
         pdfView.isShapeMode = viewModel.activeTool == .shape
-        pdfView.currentShapeKind = viewModel.activeShapeKind
-        pdfView.shapeStrokeColor = viewModel.shapeStrokeColor
-        pdfView.shapeLineWidth = viewModel.shapeLineWidth
+        pdfView.currentShapeKind = viewModel.shapeSettings.kind
+        pdfView.shapeStrokeColor = viewModel.shapeSettings.strokeColor
+        pdfView.shapeLineWidth = viewModel.shapeSettings.lineWidth
         pdfView.isPencilKitMode = viewModel.activeTool == .pencilKit
         pdfView.setFormFieldEntryEnabled(viewModel.activeTool == .form)
         pdfView.isUserInteractionEnabled = !viewModel.pageScrollLocked
         pdfView.formFieldHighlightFilter = viewModel.shouldHighlightFormField
-        pdfView.drawWithFinger = viewModel.drawWithFinger
-        pdfView.pencilOnlyAnnotations = viewModel.pencilOnlyAnnotations
+        pdfView.drawWithFinger = viewModel.pencilInput.drawWithFinger
+        pdfView.pencilOnlyAnnotations = viewModel.pencilInput.pencilOnlyAnnotations
     }
 }

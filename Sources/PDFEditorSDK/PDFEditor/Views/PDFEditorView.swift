@@ -20,16 +20,16 @@ struct PDFFormEditorView: View {
     var onSaveNavigate: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
     private var toolbarChipSize: CGSize {
-        viewModel.toolbarCompact ? CGSize(width: 44, height: 40) : CGSize(width: 56, height: 50)
+        viewModel.displaySettings.toolbarCompact ? CGSize(width: 44, height: 40) : CGSize(width: 56, height: 50)
     }
     private var toolbarButtonPadding: CGFloat {
-        viewModel.toolbarCompact ? 8 : 6
+        viewModel.displaySettings.toolbarCompact ? 8 : 6
     }
     private var toolbarDividerHeight: CGFloat {
-        viewModel.toolbarCompact ? 30 : 36
+        viewModel.displaySettings.toolbarCompact ? 30 : 36
     }
     private var toolbarDividerTopPadding: CGFloat {
-        viewModel.toolbarCompact ? 12 : 14
+        viewModel.displaySettings.toolbarCompact ? 12 : 14
     }
     private let selectEditToolbarChipSize = CGSize(width: 36, height: 36)
     @State private var isShowingSaveAlert = false
@@ -96,21 +96,21 @@ struct PDFFormEditorView: View {
                 }
                 .presentationDetents([.medium])
             }
-            .onChange(of: viewModel.textBoxFontSize) { _, _ in viewModel.applyTextStyleToSelectedTextBox() }
-            .onChange(of: viewModel.textBoxIsBold) { _, _ in viewModel.applyTextStyleToSelectedTextBox() }
-            .onChange(of: viewModel.textBoxTextColor) { _, _ in viewModel.applyTextStyleToSelectedTextBox() }
-            .onChange(of: viewModel.textBoxBackgroundColor) { _, _ in viewModel.applyTextStyleToSelectedTextBox() }
-            .onChange(of: viewModel.textBoxTextAlignment) { _, _ in viewModel.applyTextStyleToSelectedTextBox() }
-            .onChange(of: viewModel.textBoxVerticalAlignment) { _, _ in viewModel.applyTextStyleToSelectedTextBox() }
-            .onChange(of: viewModel.activeShapeKind) { _, _ in
+            .onChange(of: viewModel.textSettings.fontSize) { _, _ in viewModel.applyTextStyleToSelectedTextBox() }
+            .onChange(of: viewModel.textSettings.isBold) { _, _ in viewModel.applyTextStyleToSelectedTextBox() }
+            .onChange(of: viewModel.textSettings.textColor) { _, _ in viewModel.applyTextStyleToSelectedTextBox() }
+            .onChange(of: viewModel.textSettings.backgroundColor) { _, _ in viewModel.applyTextStyleToSelectedTextBox() }
+            .onChange(of: viewModel.textSettings.textAlignment) { _, _ in viewModel.applyTextStyleToSelectedTextBox() }
+            .onChange(of: viewModel.textSettings.verticalAlignment) { _, _ in viewModel.applyTextStyleToSelectedTextBox() }
+            .onChange(of: viewModel.shapeSettings.kind) { _, _ in
                 guard viewModel.activeTool == .select else { return }
                 viewModel.applyShapeStyleToSelected()
             }
-            .onChange(of: viewModel.shapeStrokeColor) { _, _ in
+            .onChange(of: viewModel.shapeSettings.strokeColor) { _, _ in
                 guard viewModel.activeTool == .select else { return }
                 viewModel.applyShapeStyleToSelected()
             }
-            .onChange(of: viewModel.shapeLineWidth) { _, _ in
+            .onChange(of: viewModel.shapeSettings.lineWidth) { _, _ in
                 guard viewModel.activeTool == .select else { return }
                 viewModel.applyShapeStyleToSelected()
             }
@@ -177,7 +177,7 @@ struct PDFFormEditorView: View {
             if viewModel.pdfDocument != nil {
                 ZStack {
                     SimplePDFView(viewModel: viewModel)
-                    if viewModel.isThumbnailOverlayVisible {
+                    if viewModel.displaySettings.isThumbnailOverlayVisible {
                         VStack {
                             Spacer()
                             PDFThumbnailStrip(viewModel: viewModel)
@@ -417,16 +417,16 @@ struct PDFFormEditorView: View {
                         .popover(isPresented: $showImageBorderOptions, arrowEdge: .top) {
                             ImageBorderToolOptionsView(
                                 borderWidth: Binding(
-                                    get: { viewModel.imageBorderWidth },
+                                    get: { viewModel.imageSettings.borderWidth },
                                     set: { viewModel.commitImageBorderWidth($0) }
                                 ),
                                 borderColor: Binding(
-                                    get: { Color(viewModel.imageBorderColor) },
+                                    get: { Color(viewModel.imageSettings.borderColor) },
                                     set: { viewModel.commitImageBorderColor(UIColor($0)) }
                                 ),
-                                lineWidthInputStyle: viewModel.lineWidthInputStyle,
-                                lineWidthStep: viewModel.lineWidthStep,
-                                lineWidthMax: viewModel.lineWidthMax
+                                lineWidthInputStyle: viewModel.lineWidthControls.inputStyle,
+                                lineWidthStep: viewModel.lineWidthControls.step,
+                                lineWidthMax: viewModel.lineWidthControls.max
                             )
                         }
                         .confirmationDialog(
@@ -505,16 +505,16 @@ struct PDFFormEditorView: View {
                         .buttonStyle(.plain)
                         .popover(isPresented: $showEditorSettings, arrowEdge: .top) {
                             EditorSettingsView(
-                                drawWithFinger: $viewModel.drawWithFinger,
-                                pencilOnlyAnnotations: $viewModel.pencilOnlyAnnotations,
-                                pencilDoubleTapAction: $viewModel.pencilDoubleTapAction,
-                                pencilSqueezeAction: $viewModel.pencilSqueezeAction,
-                                pencilDoubleSqueezeAction: $viewModel.pencilDoubleSqueezeAction,
-                                toolbarCompact: $viewModel.toolbarCompact,
-                                toolOptionsPresentation: $viewModel.toolOptionsPresentation,
-                                lineWidthInputStyle: $viewModel.lineWidthInputStyle,
-                                lineWidthStep: $viewModel.lineWidthStep,
-                                lineWidthMax: $viewModel.lineWidthMax
+                                drawWithFinger: $viewModel.pencilInput.drawWithFinger,
+                                pencilOnlyAnnotations: $viewModel.pencilInput.pencilOnlyAnnotations,
+                                pencilDoubleTapAction: $viewModel.pencilInput.doubleTapAction,
+                                pencilSqueezeAction: $viewModel.pencilInput.squeezeAction,
+                                pencilDoubleSqueezeAction: $viewModel.pencilInput.doubleSqueezeAction,
+                                toolbarCompact: $viewModel.displaySettings.toolbarCompact,
+                                toolOptionsPresentation: $viewModel.displaySettings.toolOptionsPresentation,
+                                lineWidthInputStyle: $viewModel.lineWidthControls.inputStyle,
+                                lineWidthStep: $viewModel.lineWidthControls.step,
+                                lineWidthMax: $viewModel.lineWidthControls.max
                             )
                         }
                     }
@@ -560,15 +560,15 @@ struct PDFFormEditorView: View {
                             .disabled(viewModel.pageCount <= 1)
                             
                             Button {
-                                viewModel.isThumbnailOverlayVisible.toggle()
+                                viewModel.displaySettings.isThumbnailOverlayVisible.toggle()
                             } label: {
                                 toolbarButtonContent("Preview") {
-                                    Image(systemName: viewModel.isThumbnailOverlayVisible ? "inset.filled.bottomthird.rectangle.portrait" : "rectangle.portrait")
+                                    Image(systemName: viewModel.displaySettings.isThumbnailOverlayVisible ? "inset.filled.bottomthird.rectangle.portrait" : "rectangle.portrait")
                                         .fontWeight(.semibold)
                                 }
                                 .foregroundStyle(Color.accentColor)
                                 .padding(toolbarButtonPadding)
-                                .background(viewModel.isThumbnailOverlayVisible ? Color.accentColor.opacity(0.3) : Color.secondary.opacity(0.1), in: .rect(cornerRadius: 8))
+                                .background(viewModel.displaySettings.isThumbnailOverlayVisible ? Color.accentColor.opacity(0.3) : Color.secondary.opacity(0.1), in: .rect(cornerRadius: 8))
                             }
                             .buttonStyle(.plain)
                         }
@@ -577,7 +577,7 @@ struct PDFFormEditorView: View {
 
             }//: SCROLL
 
-            if viewModel.toolOptionsPresentation == .subToolbar {
+            if viewModel.displaySettings.toolOptionsPresentation == .subToolbar {
                 Group {
                     if showsSelectEditToolbar {
                         selectEditToolbar
@@ -629,7 +629,7 @@ struct PDFFormEditorView: View {
                 .tracking(0.5)
                 .fontWeight(.semibold)
                 .foregroundStyle(.secondary)
-            if viewModel.toolOptionsPresentation == .longPressPopover {
+            if viewModel.displaySettings.toolOptionsPresentation == .longPressPopover {
                 drawToolChrome
                     .contentShape(Rectangle())
                     .gesture(
@@ -644,13 +644,13 @@ struct PDFFormEditorView: View {
                     .popover(isPresented: $showDrawOptions, arrowEdge: .top) {
                         DrawToolOptionsView(
                             inkColor: Binding(
-                                get: { Color(viewModel.inkColor) },
-                                set: { viewModel.inkColor = UIColor($0) }
+                                get: { Color(viewModel.drawingSettings.inkColor) },
+                                set: { viewModel.drawingSettings.inkColor = UIColor($0) }
                             ),
-                            inkLineWidth: $viewModel.inkLineWidth,
-                            lineWidthInputStyle: viewModel.lineWidthInputStyle,
-                            lineWidthStep: viewModel.lineWidthStep,
-                            lineWidthMax: viewModel.lineWidthMax
+                            inkLineWidth: $viewModel.drawingSettings.lineWidth,
+                            lineWidthInputStyle: viewModel.lineWidthControls.inputStyle,
+                            lineWidthStep: viewModel.lineWidthControls.step,
+                            lineWidthMax: viewModel.lineWidthControls.max
                         )
                     }
             } else {
@@ -685,7 +685,7 @@ struct PDFFormEditorView: View {
                 .tracking(0.5)
                 .fontWeight(.semibold)
                 .foregroundStyle(.secondary)
-            if viewModel.toolOptionsPresentation == .longPressPopover {
+            if viewModel.displaySettings.toolOptionsPresentation == .longPressPopover {
                 eraseToolChrome
                     .contentShape(Rectangle())
                     .gesture(
@@ -698,7 +698,7 @@ struct PDFFormEditorView: View {
                         )
                     )
                     .popover(isPresented: $showEraserOptions, arrowEdge: .top) {
-                        EraserToolOptionsView(eraserRadius: $viewModel.eraserRadius)
+                        EraserToolOptionsView(eraserRadius: $viewModel.drawingSettings.eraserRadius)
                     }
             } else {
                 eraseToolChrome
@@ -732,7 +732,7 @@ struct PDFFormEditorView: View {
                 .tracking(0.5)
                 .fontWeight(.semibold)
                 .foregroundStyle(.secondary)
-            if viewModel.toolOptionsPresentation == .longPressPopover {
+            if viewModel.displaySettings.toolOptionsPresentation == .longPressPopover {
                 textToolChrome
                     .contentShape(Rectangle())
                     .gesture(
@@ -747,25 +747,25 @@ struct PDFFormEditorView: View {
                     .popover(isPresented: $showTextOptions, arrowEdge: .top) {
                         TextToolOptionsView(
                             textColor: Binding(
-                                get: { Color(viewModel.textBoxTextColor) },
-                                set: { viewModel.textBoxTextColor = UIColor($0) }
+                                get: { Color(viewModel.textSettings.textColor) },
+                                set: { viewModel.textSettings.textColor = UIColor($0) }
                             ),
                             backgroundColor: Binding(
-                                get: { Color(viewModel.textBoxBackgroundColor) },
-                                set: { viewModel.textBoxBackgroundColor = UIColor($0) }
+                                get: { Color(viewModel.textSettings.backgroundColor) },
+                                set: { viewModel.textSettings.backgroundColor = UIColor($0) }
                             ),
-                            fontSize: $viewModel.textBoxFontSize,
-                            isBold: $viewModel.textBoxIsBold,
-                            textAlignment: $viewModel.textBoxTextAlignment,
-                            verticalAlignment: $viewModel.textBoxVerticalAlignment,
-                            borderWidth: $viewModel.textBoxBorderWidth,
+                            fontSize: $viewModel.textSettings.fontSize,
+                            isBold: $viewModel.textSettings.isBold,
+                            textAlignment: $viewModel.textSettings.textAlignment,
+                            verticalAlignment: $viewModel.textSettings.verticalAlignment,
+                            borderWidth: $viewModel.textSettings.borderWidth,
                             borderColor: Binding(
-                                get: { Color(viewModel.textBoxBorderColor) },
-                                set: { viewModel.textBoxBorderColor = UIColor($0) }
+                                get: { Color(viewModel.textSettings.borderColor) },
+                                set: { viewModel.textSettings.borderColor = UIColor($0) }
                             ),
-                            lineWidthInputStyle: viewModel.lineWidthInputStyle,
-                            lineWidthStep: viewModel.lineWidthStep,
-                            lineWidthMax: viewModel.lineWidthMax
+                            lineWidthInputStyle: viewModel.lineWidthControls.inputStyle,
+                            lineWidthStep: viewModel.lineWidthControls.step,
+                            lineWidthMax: viewModel.lineWidthControls.max
                         )
                     }
             } else {
@@ -792,7 +792,7 @@ struct PDFFormEditorView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Shape")
                 .font(.caption2).tracking(0.5).fontWeight(.semibold).foregroundStyle(.secondary)
-            if viewModel.toolOptionsPresentation == .longPressPopover {
+            if viewModel.displaySettings.toolOptionsPresentation == .longPressPopover {
                 shapeToolChrome
                     .contentShape(Rectangle())
                     .gesture(
@@ -806,15 +806,15 @@ struct PDFFormEditorView: View {
                     )
                     .popover(isPresented: $showShapeOptions, arrowEdge: .top) {
                         ShapeToolOptionsView(
-                            shapeKind: $viewModel.activeShapeKind,
+                            shapeKind: $viewModel.shapeSettings.kind,
                             strokeColor: Binding(
-                                get: { Color(viewModel.shapeStrokeColor) },
-                                set: { viewModel.shapeStrokeColor = UIColor($0) }
+                                get: { Color(viewModel.shapeSettings.strokeColor) },
+                                set: { viewModel.shapeSettings.strokeColor = UIColor($0) }
                             ),
-                            lineWidth: $viewModel.shapeLineWidth,
-                            lineWidthInputStyle: viewModel.lineWidthInputStyle,
-                            lineWidthStep: viewModel.lineWidthStep,
-                            lineWidthMax: viewModel.lineWidthMax
+                            lineWidth: $viewModel.shapeSettings.lineWidth,
+                            lineWidthInputStyle: viewModel.lineWidthControls.inputStyle,
+                            lineWidthStep: viewModel.lineWidthControls.step,
+                            lineWidthMax: viewModel.lineWidthControls.max
                         )
                     }
             } else {
@@ -827,7 +827,7 @@ struct PDFFormEditorView: View {
 
     private var shapeToolChrome: some View {
         toolbarButtonContent("Shape") {
-            Image(systemName: iconName(for: viewModel.activeShapeKind))
+            Image(systemName: iconName(for: viewModel.shapeSettings.kind))
                 .symbolVariant(viewModel.isShapeMode ? .fill : .none)
                 .fontWeight(.semibold)
         }
@@ -870,10 +870,10 @@ struct PDFFormEditorView: View {
             HStack(spacing: 6) {
                 Image(systemName: "pencil.tip")
                     .fontWeight(.semibold)
-                    .foregroundStyle(Color(viewModel.inkColor))
+                    .foregroundStyle(Color(viewModel.drawingSettings.inkColor))
                 ColorPicker("", selection: Binding(
-                    get: { Color(viewModel.inkColor) },
-                    set: { viewModel.inkColor = UIColor($0) }
+                    get: { Color(viewModel.drawingSettings.inkColor) },
+                    set: { viewModel.drawingSettings.inkColor = UIColor($0) }
                 ))
                 .labelsHidden()
             }
@@ -882,12 +882,12 @@ struct PDFFormEditorView: View {
             .background(toolbarChipBackground())
             .accessibilityLabel("Draw color")
             Group {
-                if viewModel.lineWidthInputStyle == .presetButtons {
+                if viewModel.lineWidthControls.inputStyle == .presetButtons {
                     Menu {
                         MenuScrollableActions {
-                            Button("1pt") { viewModel.inkLineWidth = 1 }
-                            Button("3pt") { viewModel.inkLineWidth = 3 }
-                            Button("6pt") { viewModel.inkLineWidth = 6 }
+                            Button("1pt") { viewModel.drawingSettings.lineWidth = 1 }
+                            Button("3pt") { viewModel.drawingSettings.lineWidth = 3 }
+                            Button("6pt") { viewModel.drawingSettings.lineWidth = 6 }
                         }
                     } label: {
                         activeDrawLineWidthChipLabel
@@ -901,9 +901,9 @@ struct PDFFormEditorView: View {
                     .buttonStyle(.plain)
                     .popover(isPresented: $showActiveDrawLineWidthPopover, arrowEdge: .top) {
                         ToolbarLineWidthStepperPanel(
-                            width: $viewModel.inkLineWidth,
-                            step: viewModel.lineWidthStep,
-                            max: viewModel.lineWidthMax,
+                            width: $viewModel.drawingSettings.lineWidth,
+                            step: viewModel.lineWidthControls.step,
+                            max: viewModel.lineWidthControls.max,
                             allowsZero: false,
                             title: "Line width"
                         )
@@ -919,9 +919,9 @@ struct PDFFormEditorView: View {
             Image(systemName: "lineweight").fontWeight(.semibold)
             Text(
                 LineWidthFormatting.shapeStrokeLabel(
-                    viewModel.inkLineWidth,
-                    style: viewModel.lineWidthInputStyle,
-                    step: viewModel.lineWidthStep
+                    viewModel.drawingSettings.lineWidth,
+                    style: viewModel.lineWidthControls.inputStyle,
+                    step: viewModel.lineWidthControls.step
                 )
             )
             .fontWeight(.semibold)
@@ -934,16 +934,16 @@ struct PDFFormEditorView: View {
         ToolbarSubtoolsScrollRow {
             Menu {
                 MenuScrollableActions {
-                    Button("6pt") { viewModel.eraserRadius = 6 }
-                    Button("9pt") { viewModel.eraserRadius = 9 }
-                    Button("13pt") { viewModel.eraserRadius = 13 }
-                    Button("18pt") { viewModel.eraserRadius = 18 }
-                    Button("24pt") { viewModel.eraserRadius = 24 }
+                    Button("6pt") { viewModel.drawingSettings.eraserRadius = 6 }
+                    Button("9pt") { viewModel.drawingSettings.eraserRadius = 9 }
+                    Button("13pt") { viewModel.drawingSettings.eraserRadius = 13 }
+                    Button("18pt") { viewModel.drawingSettings.eraserRadius = 18 }
+                    Button("24pt") { viewModel.drawingSettings.eraserRadius = 24 }
                 }
             } label: {
                 selectEditToolbarChip("Eraser size") {
                     Image(systemName: "circle.dotted").fontWeight(.semibold)
-                    Text("\(Int(viewModel.eraserRadius))pt")
+                    Text("\(Int(viewModel.drawingSettings.eraserRadius))pt")
                         .font(.caption2)
                         .fontWeight(.semibold)
                 }
@@ -961,10 +961,10 @@ struct PDFFormEditorView: View {
             HStack(spacing: 6) {
                 Image(systemName: "textformat")
                     .fontWeight(.semibold)
-                    .foregroundStyle(Color(viewModel.textBoxTextColor))
+                    .foregroundStyle(Color(viewModel.textSettings.textColor))
                 ColorPicker("", selection: Binding(
-                    get: { Color(viewModel.textBoxTextColor) },
-                    set: { viewModel.textBoxTextColor = UIColor($0) }
+                    get: { Color(viewModel.textSettings.textColor) },
+                    set: { viewModel.textSettings.textColor = UIColor($0) }
                 ))
                 .labelsHidden()
             }
@@ -973,8 +973,8 @@ struct PDFFormEditorView: View {
             .background(toolbarChipBackground())
             .accessibilityLabel("Text color")
 
-            Button { viewModel.textBoxIsBold.toggle() } label: {
-                selectEditToolbarChip("Bold", isActive: viewModel.textBoxIsBold) {
+            Button { viewModel.textSettings.isBold.toggle() } label: {
+                selectEditToolbarChip("Bold", isActive: viewModel.textSettings.isBold) {
                     Image(systemName: "bold").fontWeight(.semibold)
                 }
                 .foregroundStyle(Color.accentColor)
@@ -989,11 +989,11 @@ struct PDFFormEditorView: View {
                         .foregroundStyle(.secondary)
                     Image(systemName: "rectangle.fill")
                         .fontWeight(.semibold)
-                        .foregroundStyle(Color(viewModel.textBoxBackgroundColor))
+                        .foregroundStyle(Color(viewModel.textSettings.backgroundColor))
                 }
                 ColorPicker("", selection: Binding(
-                    get: { Color(viewModel.textBoxBackgroundColor) },
-                    set: { viewModel.textBoxBackgroundColor = UIColor($0) }
+                    get: { Color(viewModel.textSettings.backgroundColor) },
+                    set: { viewModel.textSettings.backgroundColor = UIColor($0) }
                 ), supportsOpacity: true)
                 .labelsHidden()
             }
@@ -1011,23 +1011,23 @@ struct PDFFormEditorView: View {
             .popover(isPresented: $showActiveTextBorderWidthPopover, arrowEdge: .top) {
                 ToolbarBorderWidthColorPanel(
                     width: Binding(
-                        get: { viewModel.textBoxBorderWidth },
+                        get: { viewModel.textSettings.borderWidth },
                         set: { v in
-                            viewModel.textBoxBorderWidth = v
+                            viewModel.textSettings.borderWidth = v
                             viewModel.commitSelectedTextBoxBorderWidth(v)
                         }
                     ),
                     color: Binding(
-                        get: { Color(viewModel.textBoxBorderColor) },
+                        get: { Color(viewModel.textSettings.borderColor) },
                         set: { v in
                             let c = UIColor(v)
-                            viewModel.textBoxBorderColor = c
+                            viewModel.textSettings.borderColor = c
                             viewModel.commitSelectedTextBoxBorderColor(c)
                         }
                     ),
-                    style: viewModel.lineWidthInputStyle,
-                    step: viewModel.lineWidthStep,
-                    max: viewModel.lineWidthMax,
+                    style: viewModel.lineWidthControls.inputStyle,
+                    step: viewModel.lineWidthControls.step,
+                    max: viewModel.lineWidthControls.max,
                     title: "Text box border"
                 )
             }
@@ -1035,24 +1035,24 @@ struct PDFFormEditorView: View {
             Menu {
                 MenuScrollableActions {
                     Button {
-                        viewModel.textBoxTextAlignment = .left
+                        viewModel.textSettings.textAlignment = .left
                     } label: {
                         Label("Leading", systemImage: "text.alignleft")
                     }
                     Button {
-                        viewModel.textBoxTextAlignment = .center
+                        viewModel.textSettings.textAlignment = .center
                     } label: {
                         Label("Center", systemImage: "text.aligncenter")
                     }
                     Button {
-                        viewModel.textBoxTextAlignment = .right
+                        viewModel.textSettings.textAlignment = .right
                     } label: {
                         Label("Trailing", systemImage: "text.alignright")
                     }
                 }
             } label: {
                 selectEditToolbarChip("Text alignment") {
-                    Image(systemName: alignmentIcon(for: viewModel.textBoxTextAlignment))
+                    Image(systemName: alignmentIcon(for: viewModel.textSettings.textAlignment))
                         .fontWeight(.semibold)
                 }
                 .foregroundStyle(Color.accentColor)
@@ -1061,24 +1061,24 @@ struct PDFFormEditorView: View {
             Menu {
                 MenuScrollableActions {
                     Button {
-                        viewModel.textBoxVerticalAlignment = .top
+                        viewModel.textSettings.verticalAlignment = .top
                     } label: {
                         Label("Top", systemImage: "arrow.up.to.line")
                     }
                     Button {
-                        viewModel.textBoxVerticalAlignment = .middle
+                        viewModel.textSettings.verticalAlignment = .middle
                     } label: {
                         Label("Middle", systemImage: "arrow.up.and.down")
                     }
                     Button {
-                        viewModel.textBoxVerticalAlignment = .bottom
+                        viewModel.textSettings.verticalAlignment = .bottom
                     } label: {
                         Label("Bottom", systemImage: "arrow.down.to.line")
                     }
                 }
             } label: {
                 selectEditToolbarChip("Vertical alignment") {
-                    Image(systemName: verticalAlignmentIcon(for: viewModel.textBoxVerticalAlignment))
+                    Image(systemName: verticalAlignmentIcon(for: viewModel.textSettings.verticalAlignment))
                         .fontWeight(.semibold)
                 }
                 .foregroundStyle(Color.accentColor)
@@ -1090,7 +1090,7 @@ struct PDFFormEditorView: View {
 
     @ViewBuilder
     private var activeDefaultTextBoxBorderWidthChipLabel: some View {
-        selectEditToolbarChip("Text box border width", isActive: viewModel.textBoxBorderWidth > 0) {
+        selectEditToolbarChip("Text box border width", isActive: viewModel.textSettings.borderWidth > 0) {
             Image(systemName: "square.dashed").fontWeight(.semibold)
             Text(defaultTextBoxBorderWidthLabel)
                 .fontWeight(.semibold)
@@ -1099,63 +1099,63 @@ struct PDFFormEditorView: View {
     }
 
     private var defaultTextBoxBorderWidthLabel: String {
-        guard viewModel.textBoxBorderWidth > 0 else { return "No" }
+        guard viewModel.textSettings.borderWidth > 0 else { return "No" }
         return LineWidthFormatting.toolbarPointsLabel(
-            viewModel.textBoxBorderWidth,
-            style: viewModel.lineWidthInputStyle,
-            step: viewModel.lineWidthStep
+            viewModel.textSettings.borderWidth,
+            style: viewModel.lineWidthControls.inputStyle,
+            step: viewModel.lineWidthControls.step
         )
     }
 
     private var defaultTextBoxBorderControlColor: Color {
-        viewModel.textBoxBorderWidth > 0 ? Color(viewModel.textBoxBorderColor) : Color.accentColor
+        viewModel.textSettings.borderWidth > 0 ? Color(viewModel.textSettings.borderColor) : Color.accentColor
     }
 
     @ViewBuilder
     private var activeShapeSubtoolsForDrawingDefaults: some View {
         ToolbarSubtoolsScrollRow {
-            Button { viewModel.activeShapeKind = .rectangle } label: {
-                selectEditToolbarChip("Rectangle", isActive: viewModel.activeShapeKind == .rectangle) {
+            Button { viewModel.shapeSettings.kind = .rectangle } label: {
+                selectEditToolbarChip("Rectangle", isActive: viewModel.shapeSettings.kind == .rectangle) {
                     Image(systemName: iconName(for: .rectangle)).fontWeight(.semibold)
                 }
                 .foregroundStyle(Color.accentColor)
             }
             .buttonStyle(.plain)
 
-            Button { viewModel.activeShapeKind = .circle } label: {
-                selectEditToolbarChip("Circle", isActive: viewModel.activeShapeKind == .circle) {
+            Button { viewModel.shapeSettings.kind = .circle } label: {
+                selectEditToolbarChip("Circle", isActive: viewModel.shapeSettings.kind == .circle) {
                     Image(systemName: iconName(for: .circle)).fontWeight(.semibold)
                 }
                 .foregroundStyle(Color.accentColor)
             }
             .buttonStyle(.plain)
 
-            Button { viewModel.activeShapeKind = .triangle } label: {
-                selectEditToolbarChip("Triangle", isActive: viewModel.activeShapeKind == .triangle) {
+            Button { viewModel.shapeSettings.kind = .triangle } label: {
+                selectEditToolbarChip("Triangle", isActive: viewModel.shapeSettings.kind == .triangle) {
                     Image(systemName: iconName(for: .triangle)).fontWeight(.semibold)
                 }
                 .foregroundStyle(Color.accentColor)
             }
             .buttonStyle(.plain)
 
-            Button { viewModel.activeShapeKind = .line } label: {
-                selectEditToolbarChip("Line", isActive: viewModel.activeShapeKind == .line) {
+            Button { viewModel.shapeSettings.kind = .line } label: {
+                selectEditToolbarChip("Line", isActive: viewModel.shapeSettings.kind == .line) {
                     Image(systemName: iconName(for: .line)).fontWeight(.semibold)
                 }
                 .foregroundStyle(Color.accentColor)
             }
             .buttonStyle(.plain)
 
-            Button { viewModel.activeShapeKind = .arrow } label: {
-                selectEditToolbarChip("Arrow", isActive: viewModel.activeShapeKind == .arrow) {
+            Button { viewModel.shapeSettings.kind = .arrow } label: {
+                selectEditToolbarChip("Arrow", isActive: viewModel.shapeSettings.kind == .arrow) {
                     Image(systemName: iconName(for: .arrow)).fontWeight(.semibold)
                 }
                 .foregroundStyle(Color.accentColor)
             }
             .buttonStyle(.plain)
 
-            Button { viewModel.activeShapeKind = .doubleArrow } label: {
-                selectEditToolbarChip("2-Arrow", isActive: viewModel.activeShapeKind == .doubleArrow) {
+            Button { viewModel.shapeSettings.kind = .doubleArrow } label: {
+                selectEditToolbarChip("2-Arrow", isActive: viewModel.shapeSettings.kind == .doubleArrow) {
                     Image(systemName: iconName(for: .doubleArrow)).fontWeight(.semibold)
                 }
                 .foregroundStyle(Color.accentColor)
@@ -1163,12 +1163,12 @@ struct PDFFormEditorView: View {
             .buttonStyle(.plain)
 
             HStack(spacing: 6) {
-                Image(systemName: fillIconName(for: viewModel.activeShapeKind))
+                Image(systemName: fillIconName(for: viewModel.shapeSettings.kind))
                     .fontWeight(.semibold)
-                    .foregroundStyle(Color(viewModel.shapeStrokeColor))
+                    .foregroundStyle(Color(viewModel.shapeSettings.strokeColor))
                 ColorPicker("", selection: Binding(
-                    get: { Color(viewModel.shapeStrokeColor) },
-                    set: { viewModel.shapeStrokeColor = UIColor($0) }
+                    get: { Color(viewModel.shapeSettings.strokeColor) },
+                    set: { viewModel.shapeSettings.strokeColor = UIColor($0) }
                 ))
                 .labelsHidden()
             }
@@ -1177,13 +1177,13 @@ struct PDFFormEditorView: View {
             .background(toolbarChipBackground())
             .accessibilityLabel("Stroke color")
             Group {
-                if viewModel.lineWidthInputStyle == .presetButtons {
+                if viewModel.lineWidthControls.inputStyle == .presetButtons {
                     Menu {
                         MenuScrollableActions {
-                            Button("Thin (1pt)") { viewModel.shapeLineWidth = 1 }
-                            Button("Medium (2pt)") { viewModel.shapeLineWidth = 2 }
-                            Button("Thick (4pt)") { viewModel.shapeLineWidth = 4 }
-                            Button("Heavy (6pt)") { viewModel.shapeLineWidth = 6 }
+                            Button("Thin (1pt)") { viewModel.shapeSettings.lineWidth = 1 }
+                            Button("Medium (2pt)") { viewModel.shapeSettings.lineWidth = 2 }
+                            Button("Thick (4pt)") { viewModel.shapeSettings.lineWidth = 4 }
+                            Button("Heavy (6pt)") { viewModel.shapeSettings.lineWidth = 6 }
                         }
                     } label: {
                         selectShapeLineWidthChipLabel
@@ -1197,9 +1197,9 @@ struct PDFFormEditorView: View {
                     .buttonStyle(.plain)
                     .popover(isPresented: $showActiveShapeLineWidthPopover, arrowEdge: .top) {
                         ToolbarLineWidthStepperPanel(
-                            width: $viewModel.shapeLineWidth,
-                            step: viewModel.lineWidthStep,
-                            max: viewModel.lineWidthMax,
+                            width: $viewModel.shapeSettings.lineWidth,
+                            step: viewModel.lineWidthControls.step,
+                            max: viewModel.lineWidthControls.max,
                             allowsZero: false,
                             title: "Stroke width"
                         )
@@ -1281,13 +1281,13 @@ struct PDFFormEditorView: View {
 
     @ViewBuilder
     private var selectImageBorderWidthChipLabel: some View {
-        selectEditToolbarChip("Image border width", isActive: viewModel.imageBorderWidth > 0) {
+        selectEditToolbarChip("Image border width", isActive: viewModel.imageSettings.borderWidth > 0) {
             Image(systemName: "square.dashed").fontWeight(.semibold)
             Text(
                 LineWidthFormatting.toolbarPointsLabel(
-                    viewModel.imageBorderWidth,
-                    style: viewModel.lineWidthInputStyle,
-                    step: viewModel.lineWidthStep
+                    viewModel.imageSettings.borderWidth,
+                    style: viewModel.lineWidthControls.inputStyle,
+                    step: viewModel.lineWidthControls.step
                 )
             )
             .fontWeight(.semibold)
@@ -1299,7 +1299,7 @@ struct PDFFormEditorView: View {
     private var selectImageSubtools: some View {
         ToolbarSubtoolsScrollRow {
             ColorPicker("", selection: Binding(
-                get: { Color(viewModel.imageBorderColor) },
+                get: { Color(viewModel.imageSettings.borderColor) },
                 set: { viewModel.commitImageBorderColor(UIColor($0)) }
             ))
             .labelsHidden()
@@ -1307,7 +1307,7 @@ struct PDFFormEditorView: View {
             .background(toolbarChipBackground())
 
             Group {
-                if viewModel.lineWidthInputStyle == .presetButtons {
+                if viewModel.lineWidthControls.inputStyle == .presetButtons {
                     Menu {
                         MenuScrollableActions {
                             Button("None") { viewModel.commitImageBorderWidth(0) }
@@ -1329,11 +1329,11 @@ struct PDFFormEditorView: View {
                     .popover(isPresented: $showSelectImageBorderWidthPopover, arrowEdge: .top) {
                         ToolbarLineWidthStepperPanel(
                             width: Binding(
-                                get: { viewModel.imageBorderWidth },
+                                get: { viewModel.imageSettings.borderWidth },
                                 set: { viewModel.commitImageBorderWidth($0) }
                             ),
-                            step: viewModel.lineWidthStep,
-                            max: viewModel.lineWidthMax,
+                            step: viewModel.lineWidthControls.step,
+                            max: viewModel.lineWidthControls.max,
                             allowsZero: true,
                             title: "Border width"
                         )
@@ -1347,7 +1347,7 @@ struct PDFFormEditorView: View {
     
     @ViewBuilder
     private var selectTextBoxBorderWidthChipLabel: some View {
-        selectEditToolbarChip("Text box border width", isActive: viewModel.selectedTextBoxBorderWidth > 0) {
+        selectEditToolbarChip("Text box border width", isActive: viewModel.selectedTextBoxBorder.width > 0) {
             Image(systemName: "square.dashed").fontWeight(.semibold)
             Text(selectedTextBoxBorderWidthLabel)
             .fontWeight(.semibold)
@@ -1359,20 +1359,20 @@ struct PDFFormEditorView: View {
     private var selectTextBoxSubtools: some View {
         ToolbarSubtoolsScrollRow {
             ColorPicker(selection: Binding(
-                get: { Color(viewModel.textBoxTextColor) },
-                set: { viewModel.textBoxTextColor = UIColor($0) }
+                get: { Color(viewModel.textSettings.textColor) },
+                set: { viewModel.textSettings.textColor = UIColor($0) }
             )) {
                 selectEditToolbarChip("Text color") {
                     Image(systemName: "textformat")
                         .fontWeight(.semibold)
-                        .foregroundStyle(Color(viewModel.textBoxTextColor))
+                        .foregroundStyle(Color(viewModel.textSettings.textColor))
                 }
                 .foregroundStyle(Color.accentColor)
             }
 
             ColorPicker(selection: Binding(
-                get: { Color(viewModel.textBoxBackgroundColor) },
-                set: { viewModel.textBoxBackgroundColor = UIColor($0) }
+                get: { Color(viewModel.textSettings.backgroundColor) },
+                set: { viewModel.textSettings.backgroundColor = UIColor($0) }
             ), supportsOpacity: true) {
                 selectEditToolbarChip("Background color") {
                     ZStack {
@@ -1381,7 +1381,7 @@ struct PDFFormEditorView: View {
                             .foregroundStyle(.secondary)
                         Image(systemName: "rectangle.fill")
                             .fontWeight(.semibold)
-                            .foregroundStyle(Color(viewModel.textBoxBackgroundColor))
+                            .foregroundStyle(Color(viewModel.textSettings.backgroundColor))
                     }
                 }
                 .foregroundStyle(Color.accentColor)
@@ -1389,8 +1389,8 @@ struct PDFFormEditorView: View {
 
             textToolbarFontSizeControl
 
-            Button { viewModel.textBoxIsBold.toggle() } label: {
-                selectEditToolbarChip("Bold", isActive: viewModel.textBoxIsBold) {
+            Button { viewModel.textSettings.isBold.toggle() } label: {
+                selectEditToolbarChip("Bold", isActive: viewModel.textSettings.isBold) {
                     Image(systemName: "bold").fontWeight(.semibold)
                 }
                 .foregroundStyle(Color.accentColor)
@@ -1399,24 +1399,24 @@ struct PDFFormEditorView: View {
             Menu {
                 MenuScrollableActions {
                     Button {
-                        viewModel.textBoxTextAlignment = .left
+                        viewModel.textSettings.textAlignment = .left
                     } label: {
                         Label("Leading", systemImage: "text.alignleft")
                     }
                     Button {
-                        viewModel.textBoxTextAlignment = .center
+                        viewModel.textSettings.textAlignment = .center
                     } label: {
                         Label("Center", systemImage: "text.aligncenter")
                     }
                     Button {
-                        viewModel.textBoxTextAlignment = .right
+                        viewModel.textSettings.textAlignment = .right
                     } label: {
                         Label("Trailing", systemImage: "text.alignright")
                     }
                 }
             } label: {
                 selectEditToolbarChip("Text alignment") {
-                    Image(systemName: alignmentIcon(for: viewModel.textBoxTextAlignment))
+                    Image(systemName: alignmentIcon(for: viewModel.textSettings.textAlignment))
                         .fontWeight(.semibold)
                 }
                 .foregroundStyle(Color.accentColor)
@@ -1424,24 +1424,24 @@ struct PDFFormEditorView: View {
             Menu {
                 MenuScrollableActions {
                     Button {
-                        viewModel.textBoxVerticalAlignment = .top
+                        viewModel.textSettings.verticalAlignment = .top
                     } label: {
                         Label("Top", systemImage: "arrow.up.to.line")
                     }
                     Button {
-                        viewModel.textBoxVerticalAlignment = .middle
+                        viewModel.textSettings.verticalAlignment = .middle
                     } label: {
                         Label("Middle", systemImage: "arrow.up.and.down")
                     }
                     Button {
-                        viewModel.textBoxVerticalAlignment = .bottom
+                        viewModel.textSettings.verticalAlignment = .bottom
                     } label: {
                         Label("Bottom", systemImage: "arrow.down.to.line")
                     }
                 }
             } label: {
                 selectEditToolbarChip("Vertical alignment") {
-                    Image(systemName: verticalAlignmentIcon(for: viewModel.textBoxVerticalAlignment))
+                    Image(systemName: verticalAlignmentIcon(for: viewModel.textSettings.verticalAlignment))
                         .fontWeight(.semibold)
                 }
                 .foregroundStyle(Color.accentColor)
@@ -1456,16 +1456,16 @@ struct PDFFormEditorView: View {
             .popover(isPresented: $showSelectTextBorderWidthPopover, arrowEdge: .top) {
                 ToolbarBorderWidthColorPanel(
                     width: Binding(
-                        get: { viewModel.selectedTextBoxBorderWidth },
+                        get: { viewModel.selectedTextBoxBorder.width },
                         set: { viewModel.commitSelectedTextBoxBorderWidth($0) }
                     ),
                     color: Binding(
-                        get: { Color(viewModel.selectedTextBoxBorderColor) },
+                        get: { Color(viewModel.selectedTextBoxBorder.color) },
                         set: { viewModel.commitSelectedTextBoxBorderColor(UIColor($0)) }
                     ),
-                    style: viewModel.lineWidthInputStyle,
-                    step: viewModel.lineWidthStep,
-                    max: viewModel.lineWidthMax,
+                    style: viewModel.lineWidthControls.inputStyle,
+                    step: viewModel.lineWidthControls.step,
+                    max: viewModel.lineWidthControls.max,
                     title: "Text box border"
                 )
             }
@@ -1491,16 +1491,16 @@ struct PDFFormEditorView: View {
     }
 
     private var selectedTextBoxBorderWidthLabel: String {
-        guard viewModel.selectedTextBoxBorderWidth > 0 else { return "No" }
+        guard viewModel.selectedTextBoxBorder.width > 0 else { return "No" }
         return LineWidthFormatting.toolbarPointsLabel(
-            viewModel.selectedTextBoxBorderWidth,
-            style: viewModel.lineWidthInputStyle,
-            step: viewModel.lineWidthStep
+            viewModel.selectedTextBoxBorder.width,
+            style: viewModel.lineWidthControls.inputStyle,
+            step: viewModel.lineWidthControls.step
         )
     }
 
     private var selectedTextBoxBorderControlColor: Color {
-        viewModel.selectedTextBoxBorderWidth > 0 ? Color(viewModel.selectedTextBoxBorderColor) : Color.accentColor
+        viewModel.selectedTextBoxBorder.width > 0 ? Color(viewModel.selectedTextBoxBorder.color) : Color.accentColor
     }
 
     @ViewBuilder
@@ -1509,9 +1509,9 @@ struct PDFFormEditorView: View {
             Image(systemName: "lineweight").fontWeight(.semibold)
             Text(
                 LineWidthFormatting.shapeStrokeLabel(
-                    viewModel.shapeLineWidth,
-                    style: viewModel.lineWidthInputStyle,
-                    step: viewModel.lineWidthStep
+                    viewModel.shapeSettings.lineWidth,
+                    style: viewModel.lineWidthControls.inputStyle,
+                    step: viewModel.lineWidthControls.step
                 )
             )
             .fontWeight(.semibold)
@@ -1526,27 +1526,27 @@ struct PDFFormEditorView: View {
                 shapeKindMenuActions
             } label: {
                 selectEditToolbarChip("Shape kind") {
-                    Image(systemName: iconName(for: viewModel.activeShapeKind))
+                    Image(systemName: iconName(for: viewModel.shapeSettings.kind))
                         .fontWeight(.semibold)
                 }
                 .foregroundStyle(Color.accentColor)
             }
 
             ColorPicker("", selection: Binding(
-                get: { Color(viewModel.shapeStrokeColor) },
-                set: { viewModel.shapeStrokeColor = UIColor($0) }
+                get: { Color(viewModel.shapeSettings.strokeColor) },
+                set: { viewModel.shapeSettings.strokeColor = UIColor($0) }
             ))
             .labelsHidden()
             .frame(width: selectEditToolbarChipSize.width, height: selectEditToolbarChipSize.height)
             .background(toolbarChipBackground())
             Group {
-                if viewModel.lineWidthInputStyle == .presetButtons {
+                if viewModel.lineWidthControls.inputStyle == .presetButtons {
                     Menu {
                         MenuScrollableActions {
-                            Button("Thin (1pt)") { viewModel.shapeLineWidth = 1 }
-                            Button("Medium (2pt)") { viewModel.shapeLineWidth = 2 }
-                            Button("Thick (4pt)") { viewModel.shapeLineWidth = 4 }
-                            Button("Heavy (6pt)") { viewModel.shapeLineWidth = 6 }
+                            Button("Thin (1pt)") { viewModel.shapeSettings.lineWidth = 1 }
+                            Button("Medium (2pt)") { viewModel.shapeSettings.lineWidth = 2 }
+                            Button("Thick (4pt)") { viewModel.shapeSettings.lineWidth = 4 }
+                            Button("Heavy (6pt)") { viewModel.shapeSettings.lineWidth = 6 }
                         }
                     } label: {
                         selectShapeLineWidthChipLabel
@@ -1560,9 +1560,9 @@ struct PDFFormEditorView: View {
                     .buttonStyle(.plain)
                     .popover(isPresented: $showSelectShapeLineWidthPopover, arrowEdge: .top) {
                         ToolbarLineWidthStepperPanel(
-                            width: $viewModel.shapeLineWidth,
-                            step: viewModel.lineWidthStep,
-                            max: viewModel.lineWidthMax,
+                            width: $viewModel.shapeSettings.lineWidth,
+                            step: viewModel.lineWidthControls.step,
+                            max: viewModel.lineWidthControls.max,
                             allowsZero: false,
                             title: "Stroke width"
                         )
@@ -1577,32 +1577,32 @@ struct PDFFormEditorView: View {
     @ViewBuilder
     private var shapeKindMenuActions: some View {
         Button {
-            viewModel.activeShapeKind = .circle
+            viewModel.shapeSettings.kind = .circle
         } label: {
             Label("Circle", systemImage: iconName(for: .circle))
         }
         Button {
-            viewModel.activeShapeKind = .rectangle
+            viewModel.shapeSettings.kind = .rectangle
         } label: {
             Label("Rectangle", systemImage: iconName(for: .rectangle))
         }
         Button {
-            viewModel.activeShapeKind = .triangle
+            viewModel.shapeSettings.kind = .triangle
         } label: {
             Label("Triangle", systemImage: iconName(for: .triangle))
         }
         Button {
-            viewModel.activeShapeKind = .line
+            viewModel.shapeSettings.kind = .line
         } label: {
             Label("Line", systemImage: iconName(for: .line))
         }
         Button {
-            viewModel.activeShapeKind = .arrow
+            viewModel.shapeSettings.kind = .arrow
         } label: {
             Label("Arrow", systemImage: iconName(for: .arrow))
         }
         Button {
-            viewModel.activeShapeKind = .doubleArrow
+            viewModel.shapeSettings.kind = .doubleArrow
         } label: {
             Label("Double Arrow", systemImage: iconName(for: .doubleArrow))
         }
@@ -1614,7 +1614,7 @@ struct PDFFormEditorView: View {
         } label: {
             selectEditToolbarChip("Font size") {
                 Image(systemName: "textformat.size").fontWeight(.semibold)
-                Text("\(Int(viewModel.textBoxFontSize))pt")
+                Text("\(Int(viewModel.textSettings.fontSize))pt")
                     .font(.caption2)
                     .fontWeight(.semibold)
             }
@@ -1622,7 +1622,7 @@ struct PDFFormEditorView: View {
         }
         .buttonStyle(.plain)
         .popover(isPresented: $showTextToolbarFontSizePopover, arrowEdge: .top) {
-            ToolbarFontSizeStepperPanel(fontSize: $viewModel.textBoxFontSize)
+            ToolbarFontSizeStepperPanel(fontSize: $viewModel.textSettings.fontSize)
         }
     }
 
@@ -1654,9 +1654,9 @@ struct PDFFormEditorView: View {
     }
 
     private func toolbarButtonContent<Icon: View>(_ title: String, @ViewBuilder icon: () -> Icon) -> some View {
-        VStack(spacing: viewModel.toolbarCompact ? 0 : 4) {
+        VStack(spacing: viewModel.displaySettings.toolbarCompact ? 0 : 4) {
             icon()
-            if !viewModel.toolbarCompact {
+            if !viewModel.displaySettings.toolbarCompact {
                 Text(title)
                     .fontWeight(.semibold)
             }
