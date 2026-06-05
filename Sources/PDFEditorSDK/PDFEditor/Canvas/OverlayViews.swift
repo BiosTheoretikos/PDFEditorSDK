@@ -469,7 +469,7 @@ final class TextBoxView: UIView, UITextViewDelegate, UIScribbleInteractionDelega
     
     func applyTextStyle(fontSize: CGFloat, isBold: Bool, textColor: UIColor) {
         let font = isBold ? UIFont.boldSystemFont(ofSize: fontSize) : UIFont.systemFont(ofSize: fontSize)
-        if let range = textView.selectedTextRange, !textView.selectedTextRange!.isEmpty {
+        if let range = textView.selectedTextRange, !range.isEmpty {
             let nsRange = textView.selectedRange
             let mutable = NSMutableAttributedString(attributedString: textView.attributedText ?? NSAttributedString(string: textView.text ?? ""))
             mutable.addAttribute(.font, value: font, range: nsRange)
