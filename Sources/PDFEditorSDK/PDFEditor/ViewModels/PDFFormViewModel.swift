@@ -727,13 +727,8 @@ class PDFFormViewModel {
             return nil
         }
 
-        let fileName = defaultFileName(for: .editable)
-        let stagingURL = stagingURL(fileName: fileName)
-        try? FileManager.default.createDirectory(
-            at: stagingURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true,
-            attributes: nil
-        )
+        let fileName = PDFGeneratedFileStore.defaultFileName(for: .editable, sourceURL: currentDocumentURL)
+        let stagingURL = PDFGeneratedFileStore.prepareStagingURL(fileName: fileName)
 
         guard editableDocument.write(to: stagingURL) else {
             saveStatus = "Failed to save PDF"
@@ -741,8 +736,8 @@ class PDFFormViewModel {
         }
 
         do {
-            let finalURL = try finalizeGeneratedFile(
-                at: stagingURL,
+            let finalURL = try PDFGeneratedFileStore.finalize(
+                generatedURL: stagingURL,
                 request: PDFEditorFileRequest(
                     kind: .editable,
                     sourceURL: currentDocumentURL,
@@ -780,13 +775,8 @@ class PDFFormViewModel {
             return nil
         }
 
-        let fileName = defaultFileName(for: .editable)
-        let tempURL = stagingURL(fileName: fileName)
-        try? FileManager.default.createDirectory(
-            at: tempURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true,
-            attributes: nil
-        )
+        let fileName = PDFGeneratedFileStore.defaultFileName(for: .editable, sourceURL: currentDocumentURL)
+        let tempURL = PDFGeneratedFileStore.prepareStagingURL(fileName: fileName)
 
         guard editableDocument.write(to: tempURL) else {
             exportStatus = "Failed to export PDF"
@@ -821,13 +811,8 @@ class PDFFormViewModel {
             return nil
         }
 
-        let fileName = defaultFileName(for: .flattened)
-        let stagingURL = stagingURL(fileName: fileName)
-        try? FileManager.default.createDirectory(
-            at: stagingURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true,
-            attributes: nil
-        )
+        let fileName = PDFGeneratedFileStore.defaultFileName(for: .flattened, sourceURL: currentDocumentURL)
+        let stagingURL = PDFGeneratedFileStore.prepareStagingURL(fileName: fileName)
 
         guard renderFlattenedPDF(document: document, metadata: metadata, destinationURL: stagingURL) else {
             exportStatus = "Failed to export PDF"
@@ -835,8 +820,8 @@ class PDFFormViewModel {
         }
 
         do {
-            let finalURL = try finalizeGeneratedFile(
-                at: stagingURL,
+            let finalURL = try PDFGeneratedFileStore.finalize(
+                generatedURL: stagingURL,
                 request: PDFEditorFileRequest(
                     kind: .flattened,
                     sourceURL: currentDocumentURL,
@@ -879,77 +864,6 @@ class PDFFormViewModel {
         }
     }
     
-    private func defaultFileName(for kind: PDFEditorDocumentKind) -> String {
-        let baseName = currentDocumentURL?.deletingPathExtension().lastPathComponent ?? "Document"
-        switch kind {
-        case .editable:
-            return "\(baseName)-Editable.pdf"
-        case .flattened:
-            return "\(baseName)-Flattened.pdf"
-        }
-    }
-
-    private func stagingURL(fileName: String) -> URL {
-        FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-            .appendingPathComponent(fileName)
-    }
-
-    private func finalizeGeneratedFile(
-        at generatedURL: URL,
-        request: PDFEditorFileRequest,
-        handler: PDFEditorFileHandler?
-    ) throws -> URL {
-        let fileManager = FileManager.default
-        try fileManager.createDirectory(
-            at: generatedURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true,
-            attributes: nil
-        )
-
-        if let handler {
-            let finalURL = try handler(request)
-            if finalURL != generatedURL, fileManager.fileExists(atPath: generatedURL.path) {
-                try? fileManager.removeItem(at: generatedURL)
-            }
-            return finalURL
-        }
-
-        let folderURL = defaultFolderURL(for: request.kind)
-        try fileManager.createDirectory(at: folderURL, withIntermediateDirectories: true, attributes: nil)
-        let destinationURL = uniqueDestinationURL(
-            for: request.suggestedFileName,
-            in: folderURL
-        )
-        if fileManager.fileExists(atPath: destinationURL.path) {
-            try fileManager.removeItem(at: destinationURL)
-        }
-        try fileManager.moveItem(at: generatedURL, to: destinationURL)
-        return destinationURL
-    }
-
-    private func defaultFolderURL(for kind: PDFEditorDocumentKind) -> URL {
-        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        switch kind {
-        case .editable:
-            return documentsPath.appendingPathComponent("PDFEdits", isDirectory: true)
-        case .flattened:
-            return documentsPath.appendingPathComponent("PDFExports", isDirectory: true)
-        }
-    }
-
-    private func uniqueDestinationURL(for fileName: String, in folderURL: URL) -> URL {
-        let baseName = URL(fileURLWithPath: fileName).deletingPathExtension().lastPathComponent
-        let ext = URL(fileURLWithPath: fileName).pathExtension.isEmpty ? "pdf" : URL(fileURLWithPath: fileName).pathExtension
-        var candidate = folderURL.appendingPathComponent("\(baseName).\(ext)")
-        var counter = 1
-        while FileManager.default.fileExists(atPath: candidate.path) {
-            candidate = folderURL.appendingPathComponent("\(baseName)-\(counter).\(ext)")
-            counter += 1
-        }
-        return candidate
-    }
-
 }
 
 // MARK: - PencilGestureHandler Conformance
