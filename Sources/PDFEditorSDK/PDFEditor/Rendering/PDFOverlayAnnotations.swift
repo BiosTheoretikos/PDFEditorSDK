@@ -167,3 +167,175 @@ final class PDFImageAnnotation: PDFAnnotation {
         }
     }
 }
+
+// MARK: - Overlay Annotation Writer
+
+enum PDFOverlayAnnotationWriter {
+    static func write(
+        metadata: OverlayDocumentMetadata,
+        to document: PDFDocument
+    ) -> [(PDFPage, PDFAnnotation)] {
+        removeExistingOverlayAnnotations(from: document)
+
+        var added: [(PDFPage, PDFAnnotation)] = []
+
+        for meta in metadata.textBoxes {
+            guard let page = document.page(at: meta.pageIndex),
+                  let annotation = makeTextBoxAnnotation(meta: meta) else { continue }
+            page.addAnnotation(annotation)
+            added.append((page, annotation))
+        }
+
+        for meta in metadata.shapes {
+            guard let page = document.page(at: meta.pageIndex),
+                  let annotation = makeShapeAnnotation(meta: meta) else { continue }
+            page.addAnnotation(annotation)
+            added.append((page, annotation))
+        }
+
+        for meta in metadata.images {
+            guard let page = document.page(at: meta.pageIndex),
+                  let annotation = makeImageAnnotation(meta: meta) else { continue }
+            page.addAnnotation(annotation)
+            added.append((page, annotation))
+        }
+
+        return added
+    }
+
+    private static func removeExistingOverlayAnnotations(from document: PDFDocument) {
+        for pageIndex in 0..<document.pageCount {
+            guard let page = document.page(at: pageIndex) else { continue }
+            for annotation in page.annotations where isStoredOverlayAnnotation(annotation) {
+                page.removeAnnotation(annotation)
+            }
+        }
+    }
+
+    private static func isStoredOverlayAnnotation(_ annotation: PDFAnnotation) -> Bool {
+        annotation.value(forAnnotationKey: PDFOverlayRenderer.overlayAnnotationKey) != nil
+        || annotation.contents?.hasPrefix(PDFOverlayRenderer.overlayMetadataPrefix) == true
+        || annotation.contents?.hasPrefix(PDFOverlayRenderer.overlayMetadataPartPrefix) == true
+    }
+
+    private static func makeTextBoxAnnotation(meta: OverlayTextBoxMeta) -> PDFAnnotation? {
+        let rect = meta.rect.cgRect
+        let annotation = PDFTextBoxAnnotation(bounds: rect)
+
+        annotation.style = PDFTextBoxAnnotation.Style(
+            text: meta.text,
+            fontSize: meta.fontSize ?? 14,
+            isBold: meta.isBold ?? false,
+            textColor: meta.textColor?.uiColor ?? .black,
+            backgroundColor: meta.background.uiColor,
+            textAlignment: NSTextAlignment(rawValue: meta.textAlignment ?? 0) ?? .left,
+            verticalAlignment: TextVerticalAlignment(rawValue: meta.verticalAlignment ?? "") ?? .top,
+            borderWidth: meta.borderWidth ?? 0,
+            borderColor: meta.borderColor?.uiColor ?? .black
+        )
+
+        annotation.contents = meta.text
+        annotation.font = meta.isBold == true
+            ? UIFont.boldSystemFont(ofSize: meta.fontSize ?? 14)
+            : UIFont.systemFont(ofSize: meta.fontSize ?? 14)
+        annotation.fontColor = meta.textColor?.uiColor ?? .black
+        annotation.alignment = NSTextAlignment(rawValue: meta.textAlignment ?? 0) ?? .left
+
+        annotation.shouldDisplay = true
+        annotation.shouldPrint = true
+        storeOverlayPayload(meta, kind: "text", on: annotation)
+        return annotation
+    }
+
+    private static func makeShapeAnnotation(meta: OverlayShapeMeta) -> PDFAnnotation? {
+        guard let kind = OverlayShapeKind(rawValue: meta.kindRaw) else { return nil }
+        let rect = meta.rect.cgRect
+        let strokeColor = meta.strokeColor.uiColor
+        let lineWidth = meta.lineWidth
+        let border = PDFBorder()
+        border.lineWidth = lineWidth
+
+        let annotation: PDFAnnotation
+
+        switch kind {
+        case .circle:
+            annotation = PDFAnnotation(bounds: rect, forType: .circle, withProperties: nil)
+            annotation.color = strokeColor
+            annotation.border = border
+            if #available(iOS 16.0, *) { annotation.interiorColor = .clear }
+
+        case .rectangle:
+            annotation = PDFAnnotation(bounds: rect, forType: .square, withProperties: nil)
+            annotation.color = strokeColor
+            annotation.border = border
+            if #available(iOS 16.0, *) { annotation.interiorColor = .clear }
+
+        case .triangle:
+            let tri = PDFTriangleAnnotation(bounds: rect)
+            tri.shapeColor = strokeColor
+            tri.shapeLineWidth = lineWidth
+            annotation = tri
+
+        case .line, .arrow, .doubleArrow:
+            let endpoints = PDFOverlayRenderer.overlayLineEndpoints(
+                in: rect,
+                kind: kind,
+                lineWidth: lineWidth,
+                flippedH: meta.lineFlippedH ?? false,
+                flippedV: meta.lineFlippedV ?? false
+            )
+
+            annotation = PDFAnnotation(bounds: rect, forType: .line, withProperties: nil)
+            annotation.color = strokeColor
+            annotation.border = border
+            annotation.setValue(
+                [endpoints.start.x, endpoints.start.y, endpoints.end.x, endpoints.end.y] as [NSNumber],
+                forAnnotationKey: PDFAnnotationKey(rawValue: "/L")
+            )
+
+            if kind == .arrow {
+                annotation.setValue(
+                    ["None", "OpenArrow"] as [NSString],
+                    forAnnotationKey: PDFAnnotationKey(rawValue: "/LE")
+                )
+            } else if kind == .doubleArrow {
+                annotation.setValue(
+                    ["OpenArrow", "OpenArrow"] as [NSString],
+                    forAnnotationKey: PDFAnnotationKey(rawValue: "/LE")
+                )
+            }
+        }
+
+        annotation.shouldDisplay = true
+        annotation.shouldPrint = true
+        storeOverlayPayload(meta, kind: "shape", on: annotation)
+        return annotation
+    }
+
+    private static func makeImageAnnotation(meta: OverlayImageMeta) -> PDFAnnotation? {
+        guard let data = Data(base64Encoded: meta.imageBase64),
+              let image = UIImage(data: data) else { return nil }
+
+        let annotation = PDFImageAnnotation(bounds: meta.rect.cgRect)
+        annotation.overlayImage = image
+        annotation.imageBorderWidth = meta.borderWidth ?? 0
+        annotation.imageBorderColor = meta.borderColor?.uiColor ?? .black
+        annotation.shouldDisplay = true
+        annotation.shouldPrint = true
+        storeOverlayPayload(meta, kind: "image", on: annotation)
+        return annotation
+    }
+
+    private static func storeOverlayPayload<T: Encodable>(_ value: T, kind: String, on annotation: PDFAnnotation) {
+        do {
+            let json = try JSONEncoder().encode(value)
+            guard let base64 = String(data: json.base64EncodedData(), encoding: .utf8) else { return }
+            annotation.setValue(
+                "\(kind):\(base64)" as NSString,
+                forAnnotationKey: PDFOverlayRenderer.overlayAnnotationKey
+            )
+        } catch {
+            assertionFailure("Failed to encode overlay payload: \(error.localizedDescription)")
+        }
+    }
+}
