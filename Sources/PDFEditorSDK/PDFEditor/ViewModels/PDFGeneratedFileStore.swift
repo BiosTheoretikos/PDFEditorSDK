@@ -42,7 +42,7 @@ enum PDFGeneratedFileStore {
         if let handler {
             let finalURL = try handler(request)
             if finalURL != generatedURL, fileManager.fileExists(atPath: generatedURL.path) {
-                try? fileManager.removeItem(at: generatedURL)
+                try fileManager.removeItem(at: generatedURL)
             }
             return finalURL
         }

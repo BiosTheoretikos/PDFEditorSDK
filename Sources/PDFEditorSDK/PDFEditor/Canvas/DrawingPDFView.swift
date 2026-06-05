@@ -2221,9 +2221,13 @@ class DrawingPDFView: PDFView, UIIndirectScribbleInteractionDelegate, PencilDraw
     }
 
     private func storeOverlayPayload<T: Encodable>(_ value: T, kind: String, on annotation: PDFAnnotation) {
-        guard let json   = try? JSONEncoder().encode(value),
-              let base64 = String(data: json.base64EncodedData(), encoding: .utf8) else { return }
-        annotation.setValue("\(kind):\(base64)" as NSString, forAnnotationKey: sdkOverlayKey)
+        do {
+            let json = try JSONEncoder().encode(value)
+            guard let base64 = String(data: json.base64EncodedData(), encoding: .utf8) else { return }
+            annotation.setValue("\(kind):\(base64)" as NSString, forAnnotationKey: sdkOverlayKey)
+        } catch {
+            assertionFailure("Failed to encode overlay payload: \(error.localizedDescription)")
+        }
     }
 
     // MARK: - Legacy blob metadata (kept for reading old files)

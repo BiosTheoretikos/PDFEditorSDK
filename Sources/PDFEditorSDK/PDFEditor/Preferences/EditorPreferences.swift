@@ -227,8 +227,12 @@ struct EditorPreferences: Codable {
     func save() {
         var copy = self
         copy.normalizeLineWidthControlFields()
-        guard let data = try? JSONEncoder().encode(copy) else { return }
-        UserDefaults.standard.set(data, forKey: Self.userDefaultsKey)
+        do {
+            let data = try JSONEncoder().encode(copy)
+            UserDefaults.standard.set(data, forKey: Self.userDefaultsKey)
+        } catch {
+            assertionFailure("Failed to encode editor preferences: \(error.localizedDescription)")
+        }
     }
 }
 

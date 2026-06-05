@@ -87,15 +87,29 @@ struct PDFBrowseView: View {
     private func loadFiles() {
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let folderURL = documentsPath.appendingPathComponent("PDFEdits", isDirectory: true)
-        let files = (try? FileManager.default.contentsOfDirectory(
-            at: folderURL,
-            includingPropertiesForKeys: [.contentModificationDateKey],
-            options: [.skipsHiddenFiles]
-        )) ?? []
-        self.files = files.sorted { lhs, rhs in
-            let leftDate = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-            let rightDate = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-            return leftDate > rightDate
+        do {
+            let files = try FileManager.default.contentsOfDirectory(
+                at: folderURL,
+                includingPropertiesForKeys: [.contentModificationDateKey],
+                options: [.skipsHiddenFiles]
+            )
+            self.files = files.sorted { lhs, rhs in
+                modificationDate(for: lhs) > modificationDate(for: rhs)
+            }
+        } catch CocoaError.fileReadNoSuchFile {
+            files = []
+        } catch {
+            openError = error.localizedDescription
+            isShowingOpenAlert = true
+            files = []
+        }
+    }
+
+    private func modificationDate(for url: URL) -> Date {
+        do {
+            return try url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate ?? .distantPast
+        } catch {
+            return .distantPast
         }
     }
 
