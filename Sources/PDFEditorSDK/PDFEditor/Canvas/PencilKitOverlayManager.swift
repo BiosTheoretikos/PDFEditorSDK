@@ -47,7 +47,6 @@ final class PencilKitOverlayManager: NSObject {
         canvas.backgroundColor = .clear
         canvas.isOpaque = false
         canvas.drawingPolicy = .anyInput
-        canvas.overrideUserInterfaceStyle = .light
 
         // Position over the current page
         if let page = pdfView.currentPage {
@@ -74,19 +73,7 @@ final class PencilKitOverlayManager: NSObject {
 
         // MARK: Done button
         let btn = UIButton(type: .system)
-        var configuration = UIButton.Configuration.filled()
-        var title = AttributedString("Done")
-        title.font = .systemFont(ofSize: 15, weight: .semibold)
-        configuration.attributedTitle = title
-        configuration.baseForegroundColor = .white
-        configuration.baseBackgroundColor = .systemBlue
-        configuration.background.cornerRadius = 10
-        configuration.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 18, bottom: 8, trailing: 18)
-        btn.configuration = configuration
-        btn.layer.shadowColor = UIColor.black.cgColor
-        btn.layer.shadowOpacity = 0.18
-        btn.layer.shadowOffset = CGSize(width: 0, height: 2)
-        btn.layer.shadowRadius = 4
+        btn.setTitle("Done", for: .normal)
         btn.addTarget(self, action: #selector(handleDoneTapped), for: .touchUpInside)
         btn.sizeToFit()
 
