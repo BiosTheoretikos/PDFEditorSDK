@@ -5,7 +5,6 @@
 //  Extracted from PDFEditorView.swift
 //
 
-import SwiftUI
 import PDFKit
 import UIKit
 

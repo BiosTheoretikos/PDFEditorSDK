@@ -3,7 +3,6 @@
 //  PDFEditorSDK
 //
 
-import SwiftUI
 import PDFKit
 import UIKit
 
@@ -722,12 +721,4 @@ extension CGPoint {
     func distance(to other: CGPoint) -> CGFloat {
         hypot(x - other.x, y - other.y)
     }
-}
-
-
-
-
-// MARK: - Preview
-#Preview {
-    PDFEditorHomeView()
 }

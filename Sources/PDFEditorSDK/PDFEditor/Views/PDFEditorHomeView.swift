@@ -45,3 +45,7 @@ private struct PDFEditorHomeContainer: View {
         )
     }
 }
+
+#Preview {
+    PDFEditorHomeView()
+}

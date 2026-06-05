@@ -5,8 +5,6 @@
 //  Extracted from PDFEditorView.swift
 //
 
-import SwiftUI
-import PDFKit
 import UIKit
 
 /// Default `UIView.hitTest` ignores touches outside the view’s `bounds`, so subviews laid out past the edge (move/resize handles) never receive them. Call `superHitTest` when the point is inside `bounds`; otherwise ask subviews in z-order.
