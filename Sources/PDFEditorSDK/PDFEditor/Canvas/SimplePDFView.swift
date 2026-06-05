@@ -25,9 +25,9 @@ struct SimplePDFView: UIViewRepresentable {
             pdfView.goToFirstPage(nil)
         }
         if viewModel.needsOverlayRestore {
-            DispatchQueue.main.async {
+            viewModel.needsOverlayRestore = false
+            Task { @MainActor in
                 viewModel.restoreOverlaysIfNeeded()
-                viewModel.needsOverlayRestore = false
             }
         }
         pdfView.isDrawingMode = viewModel.isDrawingMode
