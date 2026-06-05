@@ -39,14 +39,12 @@ Sources/PDFEditorSDK/
 ├── PDFEditorSDK.swift                    — public entry points (PDFEditorView, static utilities)
 ├── PDFEditor/
 │   ├── Canvas/                           — PDFKit canvas, overlay views, Pencil gestures, PencilKit integration
-│   ├── Rendering/                        — overlay annotation and flattening renderer
-│   ├── ViewModels/                       — editing state, undo/redo, save/export logic
-│   └── Views/                            — SwiftUI editor shell, toolbar, browser, settings, thumbnails
-├── Shared/
 │   ├── Media/                            — camera/photo picker and crop controller for PDF image overlays
 │   ├── Models/                           — editor tools, overlay state, metadata, undo, Pencil gestures
 │   ├── Preferences/                      — UserDefaults persistence for tool settings
-│   └── UIKitBridges/                     — reusable UIKit controller bridges
+│   ├── Rendering/                        — overlay annotation and flattening renderer
+│   ├── ViewModels/                       — editing state, undo/redo, save/export logic
+│   └── Views/                            — SwiftUI editor shell, toolbar, browser, settings, thumbnails
 └── Support/
     └── Styling/                          — shared view modifiers
 ```
