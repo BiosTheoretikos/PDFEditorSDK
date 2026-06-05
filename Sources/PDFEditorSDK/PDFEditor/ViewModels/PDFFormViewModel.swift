@@ -177,6 +177,12 @@ class PDFFormViewModel {
         pdfView?.applyShapeStyleToSelected(kind: shapeSettings.kind, strokeColor: shapeSettings.strokeColor, lineWidth: shapeSettings.lineWidth)
         }
 
+    func updateShapeSettings(_ update: (inout ShapeAnnotationSettings) -> Void) {
+        update(&shapeSettings)
+        guard activeTool == .select else { return }
+        applyShapeStyleToSelected()
+        }
+
     func applyImageBorderToSelected() {
         pdfView?.applyImageBorderToSelected(borderWidth: imageSettings.borderWidth, borderColor: imageSettings.borderColor)
         }
@@ -225,6 +231,12 @@ class PDFFormViewModel {
     func addImage(_ image: UIImage) {
         pdfView?.addOverlayImage(image)
         }
+
+    func updateTextSettings(_ update: (inout TextAnnotationSettings) -> Void) {
+        update(&textSettings)
+        applyTextStyleToSelectedTextBox()
+        }
+
     func applyTextStyleToSelectedTextBox() {
         pdfView?.applyTextStyleToSelectedTextBox(
             fontSize: textSettings.fontSize,

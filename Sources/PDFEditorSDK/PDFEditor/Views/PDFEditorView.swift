@@ -69,24 +69,6 @@ struct PDFFormEditorView: View {
             .popover(item: $activePopover, arrowEdge: .bottom) { popover in
                 popoverContent(for: popover)
             }
-            .onChange(of: viewModel.textSettings.fontSize) { _, _ in viewModel.applyTextStyleToSelectedTextBox() }
-            .onChange(of: viewModel.textSettings.isBold) { _, _ in viewModel.applyTextStyleToSelectedTextBox() }
-            .onChange(of: viewModel.textSettings.textColor) { _, _ in viewModel.applyTextStyleToSelectedTextBox() }
-            .onChange(of: viewModel.textSettings.backgroundColor) { _, _ in viewModel.applyTextStyleToSelectedTextBox() }
-            .onChange(of: viewModel.textSettings.textAlignment) { _, _ in viewModel.applyTextStyleToSelectedTextBox() }
-            .onChange(of: viewModel.textSettings.verticalAlignment) { _, _ in viewModel.applyTextStyleToSelectedTextBox() }
-            .onChange(of: viewModel.shapeSettings.kind) { _, _ in
-                guard viewModel.activeTool == .select else { return }
-                viewModel.applyShapeStyleToSelected()
-            }
-            .onChange(of: viewModel.shapeSettings.strokeColor) { _, _ in
-                guard viewModel.activeTool == .select else { return }
-                viewModel.applyShapeStyleToSelected()
-            }
-            .onChange(of: viewModel.shapeSettings.lineWidth) { _, _ in
-                guard viewModel.activeTool == .select else { return }
-                viewModel.applyShapeStyleToSelected()
-            }
             .alert("Unsaved Changes", isPresented: $changesNotSaved) {
                 Button("Save Changes") {
                     saveAndClose()
@@ -312,16 +294,40 @@ struct PDFFormEditorView: View {
             TextToolOptionsView(
                 textColor: Binding(
                     get: { Color(viewModel.textSettings.textColor) },
-                    set: { viewModel.textSettings.textColor = UIColor($0) }
+                    set: { newValue in
+                        viewModel.updateTextSettings { $0.textColor = UIColor(newValue) }
+                    }
                 ),
                 backgroundColor: Binding(
                     get: { Color(viewModel.textSettings.backgroundColor) },
-                    set: { viewModel.textSettings.backgroundColor = UIColor($0) }
+                    set: { newValue in
+                        viewModel.updateTextSettings { $0.backgroundColor = UIColor(newValue) }
+                    }
                 ),
-                fontSize: $viewModel.textSettings.fontSize,
-                isBold: $viewModel.textSettings.isBold,
-                textAlignment: $viewModel.textSettings.textAlignment,
-                verticalAlignment: $viewModel.textSettings.verticalAlignment,
+                fontSize: Binding(
+                    get: { viewModel.textSettings.fontSize },
+                    set: { newValue in
+                        viewModel.updateTextSettings { $0.fontSize = newValue }
+                    }
+                ),
+                isBold: Binding(
+                    get: { viewModel.textSettings.isBold },
+                    set: { newValue in
+                        viewModel.updateTextSettings { $0.isBold = newValue }
+                    }
+                ),
+                textAlignment: Binding(
+                    get: { viewModel.textSettings.textAlignment },
+                    set: { newValue in
+                        viewModel.updateTextSettings { $0.textAlignment = newValue }
+                    }
+                ),
+                verticalAlignment: Binding(
+                    get: { viewModel.textSettings.verticalAlignment },
+                    set: { newValue in
+                        viewModel.updateTextSettings { $0.verticalAlignment = newValue }
+                    }
+                ),
                 borderWidth: $viewModel.textSettings.borderWidth,
                 borderColor: Binding(
                     get: { Color(viewModel.textSettings.borderColor) },
@@ -333,12 +339,24 @@ struct PDFFormEditorView: View {
 
         case .shapeOptions:
             ShapeToolOptionsView(
-                shapeKind: $viewModel.shapeSettings.kind,
+                shapeKind: Binding(
+                    get: { viewModel.shapeSettings.kind },
+                    set: { newValue in
+                        viewModel.updateShapeSettings { $0.kind = newValue }
+                    }
+                ),
                 strokeColor: Binding(
                     get: { Color(viewModel.shapeSettings.strokeColor) },
-                    set: { viewModel.shapeSettings.strokeColor = UIColor($0) }
+                    set: { newValue in
+                        viewModel.updateShapeSettings { $0.strokeColor = UIColor(newValue) }
+                    }
                 ),
-                lineWidth: $viewModel.shapeSettings.lineWidth,
+                lineWidth: Binding(
+                    get: { viewModel.shapeSettings.lineWidth },
+                    set: { newValue in
+                        viewModel.updateShapeSettings { $0.lineWidth = newValue }
+                    }
+                ),
                 lineWidthStep: viewModel.lineWidthControls.step,
                 lineWidthMax: viewModel.lineWidthControls.max
             )
@@ -389,7 +407,12 @@ struct PDFFormEditorView: View {
 
         case .selectedShapeStrokeWidth:
             ToolbarLineWidthStepperPanel(
-                width: $viewModel.shapeSettings.lineWidth,
+                width: Binding(
+                    get: { viewModel.shapeSettings.lineWidth },
+                    set: { newValue in
+                        viewModel.updateShapeSettings { $0.lineWidth = newValue }
+                    }
+                ),
                 step: viewModel.lineWidthControls.step,
                 max: viewModel.lineWidthControls.max,
                 allowsZero: false,
@@ -397,7 +420,14 @@ struct PDFFormEditorView: View {
             )
 
         case .textFontSize:
-            ToolbarFontSizeStepperPanel(fontSize: $viewModel.textSettings.fontSize)
+            ToolbarFontSizeStepperPanel(
+                fontSize: Binding(
+                    get: { viewModel.textSettings.fontSize },
+                    set: { newValue in
+                        viewModel.updateTextSettings { $0.fontSize = newValue }
+                    }
+                )
+            )
 
         case .editorSettings:
             EditorSettingsView(
