@@ -7,38 +7,6 @@
 
 import Foundation
 
-/// How draw / erase / text / shape tool options are shown from the main toolbar.
-enum ToolOptionsPresentation: String, Codable, CaseIterable, Identifiable {
-    /// Long-press a tool button to open the options popover (default).
-    case longPressPopover
-    /// Tap the tool once to activate; tap again to show or hide the same compact sub-toolbar used in Select mode.
-    case subToolbar
-
-    var id: String { rawValue }
-
-    var displayName: String {
-        switch self {
-        case .longPressPopover: return "Long-press panel"
-        case .subToolbar: return "Sub-toolbar"
-        }
-    }
-}
-
-/// How line and border thickness is adjusted in tool panels and compact toolbars.
-enum LineWidthInputStyle: String, Codable, CaseIterable, Identifiable {
-    case presetButtons
-    case stepper
-
-    var id: String { rawValue }
-
-    var displayName: String {
-        switch self {
-        case .presetButtons: return "Preset buttons"
-        case .stepper: return "Stepper"
-        }
-    }
-}
-
 struct EditorPreferences: Codable {
     //Drawing
     var inkColor: RGBAColor = RGBAColor(r: 0, g: 0.48, b: 1, a: 1) //System Blue
@@ -80,13 +48,6 @@ struct EditorPreferences: Codable {
     // Thumbnail
     var isThumbnailOverlayVisible: Bool = true
 
-    // Toolbar
-    var toolbarCompact: Bool = false
-    /// Tool option panels: long-press popover vs tap-to-toggle sub-toolbar row.
-    var toolOptionsPresentation: ToolOptionsPresentation = .longPressPopover
-
-    /// Global UI for draw/shape stroke and image/text border widths.
-    var lineWidthInputStyle: LineWidthInputStyle = .presetButtons
     /// Step size in points when using stepper mode (clamped when saving).
     var lineWidthStep: CGFloat = 0.5
     /// Upper bound in points for stepper mode (clamped when saving).
@@ -106,9 +67,7 @@ struct EditorPreferences: Codable {
         case imageBorderWidth, imageBorderColor
         case textBoxBorderWidth, textBoxBorderColor
         case isThumbnailOverlayVisible
-        case toolbarCompact
-        case toolOptionsPresentation
-        case lineWidthInputStyle, lineWidthStep, lineWidthMax
+        case lineWidthStep, lineWidthMax
     }
 
     init() {}
@@ -143,9 +102,6 @@ struct EditorPreferences: Codable {
         textBoxBorderColor = try c.decodeIfPresent(RGBAColor.self, forKey: .textBoxBorderColor)
             ?? RGBAColor(r: 0, g: 0, b: 0, a: 1)
         isThumbnailOverlayVisible = try c.decodeIfPresent(Bool.self, forKey: .isThumbnailOverlayVisible) ?? true
-        toolbarCompact = try c.decodeIfPresent(Bool.self, forKey: .toolbarCompact) ?? false
-        toolOptionsPresentation = try c.decodeIfPresent(ToolOptionsPresentation.self, forKey: .toolOptionsPresentation) ?? .longPressPopover
-        lineWidthInputStyle = try c.decodeIfPresent(LineWidthInputStyle.self, forKey: .lineWidthInputStyle) ?? .presetButtons
         lineWidthStep = Self.decodeCGFloat(c, forKey: .lineWidthStep, default: 0.5)
         lineWidthMax = Self.decodeCGFloat(c, forKey: .lineWidthMax, default: 24)
         normalizeLineWidthControlFields()
@@ -177,9 +133,6 @@ struct EditorPreferences: Codable {
         try c.encode(Double(prefs.textBoxBorderWidth), forKey: .textBoxBorderWidth)
         try c.encode(prefs.textBoxBorderColor, forKey: .textBoxBorderColor)
         try c.encode(prefs.isThumbnailOverlayVisible, forKey: .isThumbnailOverlayVisible)
-        try c.encode(prefs.toolbarCompact, forKey: .toolbarCompact)
-        try c.encode(prefs.toolOptionsPresentation, forKey: .toolOptionsPresentation)
-        try c.encode(prefs.lineWidthInputStyle, forKey: .lineWidthInputStyle)
         try c.encode(Double(prefs.lineWidthStep), forKey: .lineWidthStep)
         try c.encode(Double(prefs.lineWidthMax), forKey: .lineWidthMax)
     }
@@ -236,29 +189,12 @@ struct EditorPreferences: Codable {
     }
 }
 
-// MARK: - Line width formatting (toolbar labels)
+// MARK: - Line width formatting
 
 enum LineWidthFormatting {
     static func snap(_ v: CGFloat, step: CGFloat, min minVal: CGFloat, max maxVal: CGFloat) -> CGFloat {
         guard step > 0 else { return Swift.min(Swift.max(v, minVal), maxVal) }
         let stepped = (v / step).rounded() * step
         return Swift.min(Swift.max(stepped, minVal), maxVal)
-    }
-
-    /// Short label for toolbar chips (respects stepper fractional widths).
-    static func toolbarPointsLabel(_ value: CGFloat, style: LineWidthInputStyle, step: CGFloat) -> String {
-        if value <= 0 { return "No Border" }
-        if style == .stepper, step < 1 {
-            let s = String(format: "%.1f", Double(value))
-            return s + "pt"
-        }
-        return "\(Int(value.rounded()))pt"
-    }
-
-    static func shapeStrokeLabel(_ value: CGFloat, style: LineWidthInputStyle, step: CGFloat) -> String {
-        if style == .stepper, step < 1 {
-            return String(format: "%.1fpt", Double(value))
-        }
-        return "\(Int(value.rounded()))pt"
     }
 }

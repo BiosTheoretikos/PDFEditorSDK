@@ -54,9 +54,6 @@ struct ImagePicker: UIViewControllerRepresentable {
             let cropVC = ImageCropViewController(image: image)
             let nav = UINavigationController(rootViewController: cropVC)
             nav.modalPresentationStyle = .fullScreen
-            nav.navigationBar.barStyle = .black
-            nav.navigationBar.tintColor = .white
-            nav.navigationBar.titleTextAttributes = [.foregroundColor: UIColor.white]
 
             cropVC.onConfirm = { [weak picker] cropped in
                 picker?.presentingViewController?.dismiss(animated: true)

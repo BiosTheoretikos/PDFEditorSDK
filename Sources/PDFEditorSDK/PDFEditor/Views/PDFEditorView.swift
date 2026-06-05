@@ -8,7 +8,6 @@
 import SwiftUI
 import PDFKit
 import UIKit
-import CoreText
 
 struct PDFFormEditorView: View {
     @Bindable var viewModel: PDFFormViewModel
@@ -18,28 +17,13 @@ struct PDFFormEditorView: View {
     var showsPencilButton = true
     var showsSaveAlert = true
     var onSaveNavigate: (() -> Void)?
+
     @Environment(\.dismiss) private var dismiss
-    private var toolbarChipSize: CGSize {
-        viewModel.displaySettings.toolbarCompact ? CGSize(width: 44, height: 40) : CGSize(width: 56, height: 50)
-    }
-    private var toolbarButtonPadding: CGFloat {
-        viewModel.displaySettings.toolbarCompact ? 8 : 6
-    }
-    private var toolbarDividerHeight: CGFloat {
-        viewModel.displaySettings.toolbarCompact ? 30 : 36
-    }
-    private var toolbarDividerTopPadding: CGFloat {
-        viewModel.displaySettings.toolbarCompact ? 12 : 14
-    }
-    private let selectEditToolbarChipSize = CGSize(width: 36, height: 36)
+
     @State private var isShowingSaveAlert = false
     @State private var isShowingExportAlert = false
     @State private var isShowingImagePicker = false
     @State private var imagePickerSource: ImagePickerSource = .photoLibrary
-    /// Wraps the exported URL in an Identifiable so `.sheet(item:)` always
-    /// creates a fresh sheet — even when the user shares multiple times.
-    /// Using a plain Bool + URL pair causes the ActivityViewController to reuse
-    /// its cached items whenever `isPresented` stays `true` across dismissals.
     @State private var showShareOptions = false
     @State private var isShowingInsertPageSheet = false
     @State private var insertPageIndex = 0
@@ -54,14 +38,9 @@ struct PDFFormEditorView: View {
     @State private var showSelectShapeLineWidthPopover = false
     @State private var showSelectImageBorderWidthPopover = false
     @State private var showSelectTextBorderWidthPopover = false
-    @State private var showActiveDrawLineWidthPopover = false
-    @State private var showActiveTextBorderWidthPopover = false
-    @State private var showActiveShapeLineWidthPopover = false
     @State private var showTextToolbarFontSizePopover = false
+    @State private var changesNotSaved = false
 
-    ///This is tracking to see if the user has made changes to a document, this is used to display an alert if they attempt to exit without saving.
-    @State private var changesNotSaved: Bool = false
-    
     var body: some View {
         coreEditorView
             .fullScreenCover(isPresented: $isShowingImagePicker) {
@@ -70,31 +49,121 @@ struct PDFFormEditorView: View {
                 }
             }
             .sheet(isPresented: $isShowingInsertPageSheet) {
-                NavigationStack {
-                    Form {
-                        Picker("Insert Position", selection: $insertPageIndex) {
-                            ForEach(0...max(viewModel.pageCount, 0), id: \.self) { index in
-                                Text(insertPageLabel(for: index))
-                                    .tag(index)
-                            }
-                        }
-                        .pickerStyle(.wheel)
-                    }
-                    .navigationTitle("Insert Page")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button("Cancel") { isShowingInsertPageSheet = false }
-                        }
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Insert") {
-                                viewModel.addBlankPage(at: insertPageIndex)
-                                isShowingInsertPageSheet = false
-                            }
-                        }
-                    }
-                }
-                .presentationDetents([.medium])
+                insertPageView
+            }
+            .popover(isPresented: $showDrawOptions, arrowEdge: .bottom) {
+                DrawToolOptionsView(
+                    inkColor: Binding(
+                        get: { Color(viewModel.drawingSettings.inkColor) },
+                        set: { viewModel.drawingSettings.inkColor = UIColor($0) }
+                    ),
+                    inkLineWidth: $viewModel.drawingSettings.lineWidth,
+                    lineWidthStep: viewModel.lineWidthControls.step,
+                    lineWidthMax: viewModel.lineWidthControls.max
+                )
+            }
+            .popover(isPresented: $showEraserOptions, arrowEdge: .bottom) {
+                EraserToolOptionsView(eraserRadius: $viewModel.drawingSettings.eraserRadius)
+            }
+            .popover(isPresented: $showTextOptions, arrowEdge: .bottom) {
+                TextToolOptionsView(
+                    textColor: Binding(
+                        get: { Color(viewModel.textSettings.textColor) },
+                        set: { viewModel.textSettings.textColor = UIColor($0) }
+                    ),
+                    backgroundColor: Binding(
+                        get: { Color(viewModel.textSettings.backgroundColor) },
+                        set: { viewModel.textSettings.backgroundColor = UIColor($0) }
+                    ),
+                    fontSize: $viewModel.textSettings.fontSize,
+                    isBold: $viewModel.textSettings.isBold,
+                    textAlignment: $viewModel.textSettings.textAlignment,
+                    verticalAlignment: $viewModel.textSettings.verticalAlignment,
+                    borderWidth: $viewModel.textSettings.borderWidth,
+                    borderColor: Binding(
+                        get: { Color(viewModel.textSettings.borderColor) },
+                        set: { viewModel.textSettings.borderColor = UIColor($0) }
+                    ),
+                    lineWidthStep: viewModel.lineWidthControls.step,
+                    lineWidthMax: viewModel.lineWidthControls.max
+                )
+            }
+            .popover(isPresented: $showShapeOptions, arrowEdge: .bottom) {
+                ShapeToolOptionsView(
+                    shapeKind: $viewModel.shapeSettings.kind,
+                    strokeColor: Binding(
+                        get: { Color(viewModel.shapeSettings.strokeColor) },
+                        set: { viewModel.shapeSettings.strokeColor = UIColor($0) }
+                    ),
+                    lineWidth: $viewModel.shapeSettings.lineWidth,
+                    lineWidthStep: viewModel.lineWidthControls.step,
+                    lineWidthMax: viewModel.lineWidthControls.max
+                )
+            }
+            .popover(isPresented: $showImageBorderOptions, arrowEdge: .bottom) {
+                ImageBorderToolOptionsView(
+                    borderWidth: Binding(
+                        get: { viewModel.imageSettings.borderWidth },
+                        set: { viewModel.commitImageBorderWidth($0) }
+                    ),
+                    borderColor: Binding(
+                        get: { Color(viewModel.imageSettings.borderColor) },
+                        set: { viewModel.commitImageBorderColor(UIColor($0)) }
+                    ),
+                    lineWidthStep: viewModel.lineWidthControls.step,
+                    lineWidthMax: viewModel.lineWidthControls.max
+                )
+            }
+            .popover(isPresented: $showSelectImageBorderWidthPopover, arrowEdge: .bottom) {
+                ToolbarBorderWidthColorPanel(
+                    width: Binding(
+                        get: { viewModel.imageSettings.borderWidth },
+                        set: { viewModel.commitImageBorderWidth($0) }
+                    ),
+                    color: Binding(
+                        get: { Color(viewModel.imageSettings.borderColor) },
+                        set: { viewModel.commitImageBorderColor(UIColor($0)) }
+                    ),
+                    step: viewModel.lineWidthControls.step,
+                    max: viewModel.lineWidthControls.max,
+                    title: "Image Border"
+                )
+            }
+            .popover(isPresented: $showSelectTextBorderWidthPopover, arrowEdge: .bottom) {
+                ToolbarBorderWidthColorPanel(
+                    width: Binding(
+                        get: { viewModel.selectedTextBoxBorder.width },
+                        set: { viewModel.commitSelectedTextBoxBorderWidth($0) }
+                    ),
+                    color: Binding(
+                        get: { Color(viewModel.selectedTextBoxBorder.color) },
+                        set: { viewModel.commitSelectedTextBoxBorderColor(UIColor($0)) }
+                    ),
+                    step: viewModel.lineWidthControls.step,
+                    max: viewModel.lineWidthControls.max,
+                    title: "Text Box Border"
+                )
+            }
+            .popover(isPresented: $showSelectShapeLineWidthPopover, arrowEdge: .bottom) {
+                ToolbarLineWidthStepperPanel(
+                    width: $viewModel.shapeSettings.lineWidth,
+                    step: viewModel.lineWidthControls.step,
+                    max: viewModel.lineWidthControls.max,
+                    allowsZero: false,
+                    title: "Stroke Width"
+                )
+            }
+            .popover(isPresented: $showTextToolbarFontSizePopover, arrowEdge: .bottom) {
+                ToolbarFontSizeStepperPanel(fontSize: $viewModel.textSettings.fontSize)
+            }
+            .popover(isPresented: $showEditorSettings, arrowEdge: .bottom) {
+                EditorSettingsView(
+                    drawWithFinger: $viewModel.pencilInput.drawWithFinger,
+                    pencilOnlyAnnotations: $viewModel.pencilInput.pencilOnlyAnnotations,
+                    pencilDoubleTapAction: $viewModel.pencilInput.doubleTapAction,
+                    pencilSqueezeAction: $viewModel.pencilInput.squeezeAction,
+                    pencilDoubleSqueezeAction: $viewModel.pencilInput.doubleSqueezeAction
+                )
             }
             .onChange(of: viewModel.textSettings.fontSize) { _, _ in viewModel.applyTextStyleToSelectedTextBox() }
             .onChange(of: viewModel.textSettings.isBold) { _, _ in viewModel.applyTextStyleToSelectedTextBox() }
@@ -125,6 +194,335 @@ struct PDFFormEditorView: View {
             } message: {
                 Text("You have unsaved changes. Would you like to save before closing?")
             }
+    }
+
+    private var coreEditorView: some View {
+        Group {
+            if viewModel.pdfDocument != nil {
+                SimplePDFView(viewModel: viewModel)
+                    .overlay(alignment: .bottom) {
+                        if viewModel.displaySettings.isThumbnailOverlayVisible {
+                            PDFThumbnailStrip(viewModel: viewModel)
+                                .padding()
+                        }
+                    }
+            } else {
+                ContentUnavailableView(
+                    "No PDF Loaded",
+                    systemImage: "doc.fill",
+                    description: Text("The PDF form could not be loaded")
+                )
+            }
+        }
+        .navigationTitle("PDF Form Editor")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            navigationToolbar
+            editingToolbar
+        }
+        .alert("Save PDF", isPresented: $isShowingSaveAlert, actions: {
+            Button("OK", role: .cancel) { }
+        }, message: {
+            Text(viewModel.saveStatus ?? "No status")
+        })
+        .alert("Remove Page \(viewModel.currentPageIndex + 1)?", isPresented: $isShowingRemovePageAlert, actions: {
+            Button("Remove", role: .destructive) {
+                viewModel.removeCurrentPage()
+            }
+            Button("Cancel", role: .cancel) { }
+        }, message: {
+            Text("This page will be removed from the document. You can undo this action.")
+        })
+        .alert("Export PDF", isPresented: $isShowingExportAlert, actions: {
+            Button("OK", role: .cancel) { }
+        }, message: {
+            Text(viewModel.exportStatus ?? "No status")
+        })
+        .confirmationDialog(
+            "Add image to form field",
+            isPresented: $viewModel.showFormWidgetImageSourceDialog,
+            titleVisibility: .visible
+        ) {
+            Button("Take Photo") {
+                viewModel.beginFormWidgetImagePickFromCamera()
+                imagePickerSource = .camera
+                isShowingImagePicker = true
+            }
+            Button("Photo Library") {
+                viewModel.beginFormWidgetImagePickFromLibrary()
+                imagePickerSource = .photoLibrary
+                isShowingImagePicker = true
+            }
+            Button("Cancel", role: .cancel) {
+                viewModel.cancelPendingFormWidgetImagePick()
+            }
+        } message: {
+            Text("Choose a source for this field.")
+        }
+        .confirmationDialog("Add Image", isPresented: $showAddImageSourceDialog, titleVisibility: .visible) {
+            Button("Camera") {
+                viewModel.imagePickIsForFormWidget = false
+                imagePickerSource = .camera
+                isShowingImagePicker = true
+            }
+            Button("Photo Library") {
+                viewModel.imagePickIsForFormWidget = false
+                imagePickerSource = .photoLibrary
+                isShowingImagePicker = true
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Choose a source for the image.")
+        }
+    }
+
+    private var insertPageView: some View {
+        NavigationStack {
+            Form {
+                Picker("Insert Position", selection: $insertPageIndex) {
+                    ForEach(0...max(viewModel.pageCount, 0), id: \.self) { index in
+                        Text(insertPageLabel(for: index))
+                            .tag(index)
+                    }
+                }
+                .pickerStyle(.wheel)
+            }
+            .navigationTitle("Insert Page")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { isShowingInsertPageSheet = false }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Insert") {
+                        viewModel.addBlankPage(at: insertPageIndex)
+                        isShowingInsertPageSheet = false
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+
+    @ToolbarContentBuilder
+    private var navigationToolbar: some ToolbarContent {
+        if showsDismissButton {
+            ToolbarItem(placement: .topBarLeading) {
+                Button("Close") {
+                    viewModel.flushActiveFormFieldChangesIfNeeded()
+                    if !viewModel.undoStack.isEmpty {
+                        changesNotSaved.toggle()
+                    } else {
+                        dismiss()
+                    }
+                }
+            }
+        }
+
+        ToolbarItemGroup(placement: .topBarTrailing) {
+            Button {
+                viewModel.undo()
+            } label: {
+                Label("Undo", systemImage: "arrow.uturn.backward")
+            }
+            .disabled(!viewModel.canUndo)
+
+            Button {
+                viewModel.redo()
+            } label: {
+                Label("Redo", systemImage: "arrow.uturn.forward")
+            }
+            .disabled(!viewModel.canRedo)
+
+            Button("Save") {
+                saveFromToolbar()
+            }
+
+            Button("Share") {
+                showShareOptions.toggle()
+            }
+            .popover(isPresented: $showShareOptions, arrowEdge: .top) {
+                ShareExportPopover { mode in
+                    showShareOptions = false
+                    sharePDF(mode: mode)
+                }
+            }
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var editingToolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .bottomBar) {
+            toolButton(.select, title: "Select", systemImage: "cursorarrow.rays")
+            toolButton(.form, title: "Form", systemImage: "text.document")
+            toolButton(.draw, title: "Draw", systemImage: "pencil.and.scribble")
+            toolButton(.erase, title: "Erase", systemImage: "eraser")
+            toolButton(.text, title: "Text", systemImage: "character.cursor.ibeam")
+            toolButton(.shape, title: "Shape", systemImage: iconName(for: viewModel.shapeSettings.kind))
+
+            Button {
+                showAddImageSourceDialog = true
+            } label: {
+                Label("Image", systemImage: "photo.on.rectangle")
+            }
+
+            if showsPencilButton {
+                toolButton(.pencilKit, title: "Pencil", systemImage: "pencil.and.outline")
+            }
+
+            Menu {
+                editorMenuItems
+            } label: {
+                Label("More", systemImage: "ellipsis.circle")
+            }
+        }
+    }
+
+    private func toolButton(_ tool: EditorTool, title: String, systemImage: String) -> some View {
+        Button {
+            viewModel.setTool(tool)
+        } label: {
+            Label(title, systemImage: systemImage)
+                .symbolVariant(viewModel.activeTool == tool ? .fill : .none)
+        }
+    }
+
+    @ViewBuilder
+    private var editorMenuItems: some View {
+        Section("Tool Options") {
+            Button {
+                showDrawOptions = true
+            } label: {
+                Label("Draw Settings", systemImage: "paintbrush.pointed")
+            }
+            Button {
+                showEraserOptions = true
+            } label: {
+                Label("Eraser Settings", systemImage: "circle.dotted")
+            }
+            Button {
+                showTextOptions = true
+            } label: {
+                Label("Text Settings", systemImage: "textformat")
+            }
+            Button {
+                showShapeOptions = true
+            } label: {
+                Label("Shape Settings", systemImage: "square.on.circle")
+            }
+            Button {
+                showImageBorderOptions = true
+            } label: {
+                Label("Image Border", systemImage: "square.dashed")
+            }
+        }
+
+        Section("Document") {
+            if showsHighlightButton {
+                Button {
+                    viewModel.highlightSelectedText()
+                } label: {
+                    Label("Highlight Selection", systemImage: "highlighter")
+                }
+                .disabled(!viewModel.hasTextSelection)
+            }
+
+            if showsLockButton {
+                Button {
+                    viewModel.toggleScrollLock()
+                } label: {
+                    Label(
+                        viewModel.pageScrollLocked ? "Unlock Scrolling" : "Lock Scrolling",
+                        systemImage: viewModel.pageScrollLocked ? "lock.open" : "lock"
+                    )
+                }
+            }
+
+            Button {
+                viewModel.displaySettings.isThumbnailOverlayVisible.toggle()
+            } label: {
+                Label(
+                    viewModel.displaySettings.isThumbnailOverlayVisible ? "Hide Thumbnails" : "Show Thumbnails",
+                    systemImage: "rectangle.portrait.on.rectangle.portrait"
+                )
+            }
+
+            Button {
+                insertPageIndex = min(viewModel.currentPageIndex + 1, viewModel.pageCount)
+                isShowingInsertPageSheet = true
+            } label: {
+                Label("Add Page", systemImage: "doc.badge.plus")
+            }
+
+            Button(role: .destructive) {
+                isShowingRemovePageAlert = true
+            } label: {
+                Label("Remove Page", systemImage: "doc")
+            }
+            .disabled(viewModel.pageCount <= 1)
+        }
+
+        if viewModel.hasSelectedInkAnnotation || viewModel.hasSelectedOverlayObject {
+            Section("Selection") {
+                selectionMenuItems
+            }
+        }
+
+        Section {
+            Button {
+                showEditorSettings = true
+            } label: {
+                Label("Editor Settings", systemImage: "gearshape")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var selectionMenuItems: some View {
+        if viewModel.selectedOverlayKind == .textBox {
+            Button {
+                showTextOptions = true
+            } label: {
+                Label("Text Settings", systemImage: "textformat")
+            }
+            Button {
+                showTextToolbarFontSizePopover = true
+            } label: {
+                Label("Font Size", systemImage: "textformat.size")
+            }
+            Button {
+                showSelectTextBorderWidthPopover = true
+            } label: {
+                Label("Text Box Border", systemImage: "square.dashed")
+            }
+        }
+
+        if viewModel.selectedOverlayKind == .shape {
+            Button {
+                showShapeOptions = true
+            } label: {
+                Label("Shape Settings", systemImage: iconName(for: viewModel.shapeSettings.kind))
+            }
+            Button {
+                showSelectShapeLineWidthPopover = true
+            } label: {
+                Label("Stroke Width", systemImage: "lineweight")
+            }
+        }
+
+        if viewModel.selectedOverlayKind == .image {
+            Button {
+                showSelectImageBorderWidthPopover = true
+            } label: {
+                Label("Image Border", systemImage: "square.dashed")
+            }
+        }
+
+        Button(role: .destructive) {
+            viewModel.deleteSelectedSelection()
+        } label: {
+            Label("Delete Selection", systemImage: "trash")
+        }
     }
 
     private func saveAndClose() {
@@ -168,1508 +566,6 @@ struct PDFFormEditorView: View {
         }
     }
 
-    private var coreEditorView: some View {
-        VStack {
-            // Toolbar
-            toolbarView
-
-            // PDF View
-            if viewModel.pdfDocument != nil {
-                ZStack {
-                    SimplePDFView(viewModel: viewModel)
-                    if viewModel.displaySettings.isThumbnailOverlayVisible {
-                        VStack {
-                            Spacer()
-                            PDFThumbnailStrip(viewModel: viewModel)
-                                .padding(.horizontal, 12)
-                                .padding(.bottom, 12)
-                        }
-                    }
-                }
-            } else {
-                ContentUnavailableView(
-                    "No PDF Loaded",
-                    systemImage: "doc.fill",
-                    description: Text("The PDF form could not be loaded")
-                )
-            }
-        }//: VSTACK
-        .padding()
-        .backgroundModifier()
-        .navigationTitle("PDF Form Editor")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            if showsDismissButton {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        viewModel.flushActiveFormFieldChangesIfNeeded()
-                        if !viewModel.undoStack.isEmpty {
-                            changesNotSaved.toggle()
-                        } else {
-                            dismiss()
-                        }
-                    } label: {
-                        Text("Close")
-                    }
-                }
-            }
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                Button {
-                    viewModel.undo()
-                } label: {
-                    Image(systemName: "arrow.uturn.backward")
-                }
-                .disabled(!viewModel.canUndo)
-
-                Button {
-                    viewModel.redo()
-                } label: {
-                    Image(systemName: "arrow.uturn.forward")
-                }
-                .disabled(!viewModel.canRedo)
-
-                Button {
-                    saveFromToolbar()
-                } label: {
-                    Text("Save")
-                }
-
-                Button {
-                    showShareOptions.toggle()
-                } label: {
-                    Text("Share")
-                }
-                .popover(isPresented: $showShareOptions, arrowEdge: .top) {
-                    ShareExportPopover { mode in
-                        showShareOptions = false
-                        sharePDF(mode: mode)
-                    }
-                }
-            }
-        }
-        .alert("Save PDF", isPresented: $isShowingSaveAlert, actions: {
-            Button("OK", role: .cancel) { }
-        }, message: {
-            Text(viewModel.saveStatus ?? "No status")
-        })
-        .alert("Remove Page \(viewModel.currentPageIndex + 1)?", isPresented: $isShowingRemovePageAlert, actions: {
-            Button("Remove", role: .destructive) {
-                viewModel.removeCurrentPage()
-            }
-            Button("Cancel", role: .cancel) { }
-        }, message: {
-            Text("This page will be removed from the document. You can undo this action.")
-        })
-        .alert("Export PDF", isPresented: $isShowingExportAlert, actions: {
-            Button("OK", role: .cancel) { }
-        }, message: {
-            Text(viewModel.exportStatus ?? "No status")
-        })
-        .confirmationDialog(
-            "Add image to form field",
-            isPresented: $viewModel.showFormWidgetImageSourceDialog,
-            titleVisibility: .visible
-        ) {
-            Button("Take Photo") {
-                viewModel.beginFormWidgetImagePickFromCamera()
-                imagePickerSource = .camera
-                isShowingImagePicker = true
-            }
-            Button("Photo Library") {
-                viewModel.beginFormWidgetImagePickFromLibrary()
-                imagePickerSource = .photoLibrary
-                isShowingImagePicker = true
-            }
-            Button("Cancel", role: .cancel) {
-                viewModel.cancelPendingFormWidgetImagePick()
-            }
-        } message: {
-            Text("Choose a source for this field.")
-        }
-    }
-    
-    private var toolbarView: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .top, spacing: 12) {
-                    selectToolSection
-
-                    Rectangle()
-                        .fill(Color.secondary.opacity(0.25))
-                        .frame(width: 1, height: toolbarDividerHeight)
-                        .padding(.top, toolbarDividerTopPadding)
-
-                    VStack(spacing: 6) {
-                        Text("Form")
-                            .font(.caption2)
-                            .tracking(0.5)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.secondary)
-                        HStack {
-                            Button {
-                                viewModel.setTool(.form)
-                            } label: {
-                                toolbarButtonContent("Form") {
-                                    Image(systemName: "text.document")
-                                        .symbolVariant(viewModel.activeTool == .form ? .fill : .none)
-                                        .fontWeight(.semibold)
-                                }
-                                .foregroundStyle(Color.accentColor)
-                                .padding(toolbarButtonPadding)
-                                .background(viewModel.activeTool == .form ? Color.accentColor.opacity(0.3) : Color.secondary.opacity(0.1), in: .rect(cornerRadius: 8))
-                            }
-                            .buttonStyle(.plain)
-                            
-                            if showsHighlightButton {
-                                Button {
-                                    viewModel.highlightSelectedText()
-                                } label: {
-                                    toolbarButtonContent("Highlight") {
-                                        Image(systemName: "highlighter")
-                                            .fontWeight(.semibold)
-                                    }
-                                    .foregroundStyle(viewModel.hasTextSelection ? Color.accentColor : .secondary.opacity(0.3))
-                                    .padding(toolbarButtonPadding)
-                                    .background(Color.secondary.opacity(0.1), in: .rect(cornerRadius: 8))
-                                }
-                                .buttonStyle(.plain)
-                                .disabled(!viewModel.hasTextSelection)
-                            }
-                            
-                            if showsLockButton {
-                                Button {
-                                    viewModel.toggleScrollLock()
-                                } label: {
-                                    toolbarButtonContent("Lock") {
-                                        Image(systemName: "lock")
-                                            .symbolVariant(viewModel.pageScrollLocked ? .fill : .none)
-                                            .fontWeight(.semibold)
-                                    }
-                                    .foregroundStyle(Color.accentColor)
-                                    .padding(toolbarButtonPadding)
-                                    .background(viewModel.pageScrollLocked ? Color.accentColor.opacity(0.3) : Color.secondary.opacity(0.1), in: .rect(cornerRadius: 8))
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                    
-                    Rectangle()
-                        .fill(Color.secondary.opacity(0.25))
-                        .frame(width: 1, height: toolbarDividerHeight)
-                        .padding(.top, toolbarDividerTopPadding)
-                    
-                    // MARK: Draw
-                    drawToolbarSection
-
-                    Rectangle()
-                        .fill(Color.secondary.opacity(0.25))
-                        .frame(width: 1, height: toolbarDividerHeight)
-                        .padding(.top, toolbarDividerTopPadding)
-
-                    // MARK: Erase
-                    eraseToolbarSection
-
-                    Rectangle()
-                        .fill(Color.secondary.opacity(0.25))
-                        .frame(width: 1, height: toolbarDividerHeight)
-                        .padding(.top, toolbarDividerTopPadding)
-
-                    // MARK: Text
-                    textToolbarSection
-                    
-                    Rectangle()
-                        .fill(Color.secondary.opacity(0.25))
-                        .frame(width: 1, height: toolbarDividerHeight)
-                        .padding(.top, toolbarDividerTopPadding)
-
-                    shapeToolSection
-
-                    Rectangle()
-                        .fill(Color.secondary.opacity(0.25))
-                        .frame(width: 1, height: toolbarDividerHeight)
-                        .padding(.top, toolbarDividerTopPadding)
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Image")
-                            .font(.caption2)
-                            .tracking(0.5)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.secondary)
-                        toolbarButtonContent("Image") {
-                            Image(systemName: "photo.on.rectangle")
-                                .fontWeight(.semibold)
-                        }
-                        .foregroundStyle(Color.accentColor)
-                        .padding(toolbarButtonPadding)
-                        .background(Color.secondary.opacity(0.1), in: .rect(cornerRadius: 8))
-                        .contentShape(Rectangle())
-                        .gesture(
-                            ExclusiveGesture(
-                                LongPressGesture(minimumDuration: 0.5).onEnded { _ in
-                                    showImageBorderOptions = true
-                                },
-                                TapGesture().onEnded {
-                                    showAddImageSourceDialog = true
-                                }
-                            )
-                        )
-                        .popover(isPresented: $showImageBorderOptions, arrowEdge: .top) {
-                            ImageBorderToolOptionsView(
-                                borderWidth: Binding(
-                                    get: { viewModel.imageSettings.borderWidth },
-                                    set: { viewModel.commitImageBorderWidth($0) }
-                                ),
-                                borderColor: Binding(
-                                    get: { Color(viewModel.imageSettings.borderColor) },
-                                    set: { viewModel.commitImageBorderColor(UIColor($0)) }
-                                ),
-                                lineWidthInputStyle: viewModel.lineWidthControls.inputStyle,
-                                lineWidthStep: viewModel.lineWidthControls.step,
-                                lineWidthMax: viewModel.lineWidthControls.max
-                            )
-                        }
-                        .confirmationDialog(
-                            "Add Image",
-                            isPresented: $showAddImageSourceDialog,
-                            titleVisibility: .visible
-                        ) {
-                            Button("Camera") {
-                                viewModel.imagePickIsForFormWidget = false
-                                imagePickerSource = .camera
-                                isShowingImagePicker = true
-                            }
-                            Button("Photo Library") {
-                                viewModel.imagePickIsForFormWidget = false
-                                imagePickerSource = .photoLibrary
-                                isShowingImagePicker = true
-                            }
-                            Button("Cancel", role: .cancel) {}
-                        } message: {
-                            Text("Choose a source for the image.")
-                        }
-                    }
-
-                    if showsPencilButton {
-                        Rectangle()
-                            .fill(Color.secondary.opacity(0.25))
-                            .frame(width: 1, height: toolbarDividerHeight)
-                            .padding(.top, toolbarDividerTopPadding)
-
-                        VStack(spacing: 6) {
-                            Text("Pencil")
-                                .font(.caption2)
-                                .tracking(0.5)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(.secondary)
-                            Button {
-                                viewModel.setTool(.pencilKit)
-                            } label: {
-                                toolbarButtonContent("Pencil") {
-                                    Image(systemName: "pencil.and.outline")
-                                        .symbolVariant(viewModel.activeTool == .pencilKit ? .fill : .none)
-                                        .fontWeight(.semibold)
-                                }
-                                .foregroundStyle(Color.accentColor)
-                                .padding(toolbarButtonPadding)
-                                .background(viewModel.activeTool == .pencilKit ? Color.accentColor.opacity(0.3) : Color.secondary.opacity(0.1), in: .rect(cornerRadius: 8))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-
-                    Rectangle()
-                        .fill(Color.secondary.opacity(0.25))
-                        .frame(width: 1, height: toolbarDividerHeight)
-                        .padding(.top, toolbarDividerTopPadding)
-
-                    // MARK: Settings Section
-                    VStack(spacing: 6) {
-                        Text("Settings")
-                            .font(.caption2)
-                            .tracking(0.5)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.secondary)
-                        Button {
-                            showEditorSettings.toggle()
-                        } label: {
-                            toolbarButtonContent("Settings") {
-                                Image(systemName: "slider.horizontal.3")
-                                    .symbolVariant(showEditorSettings ? .fill : .none)
-                                    .fontWeight(.semibold)
-                            }
-                            .foregroundStyle(Color.accentColor)
-                            .padding(toolbarButtonPadding)
-                            .background(showEditorSettings ? Color.accentColor.opacity(0.3) : Color.secondary.opacity(0.1), in: .rect(cornerRadius: 8))
-                        }
-                        .buttonStyle(.plain)
-                        .popover(isPresented: $showEditorSettings, arrowEdge: .top) {
-                            EditorSettingsView(
-                                drawWithFinger: $viewModel.pencilInput.drawWithFinger,
-                                pencilOnlyAnnotations: $viewModel.pencilInput.pencilOnlyAnnotations,
-                                pencilDoubleTapAction: $viewModel.pencilInput.doubleTapAction,
-                                pencilSqueezeAction: $viewModel.pencilInput.squeezeAction,
-                                pencilDoubleSqueezeAction: $viewModel.pencilInput.doubleSqueezeAction,
-                                toolbarCompact: $viewModel.displaySettings.toolbarCompact,
-                                toolOptionsPresentation: $viewModel.displaySettings.toolOptionsPresentation,
-                                lineWidthInputStyle: $viewModel.lineWidthControls.inputStyle,
-                                lineWidthStep: $viewModel.lineWidthControls.step,
-                                lineWidthMax: $viewModel.lineWidthControls.max
-                            )
-                        }
-                    }
-
-                    Rectangle()
-                        .fill(Color.secondary.opacity(0.25))
-                        .frame(width: 1, height: toolbarDividerHeight)
-                        .padding(.top, toolbarDividerTopPadding)
-
-                    VStack(spacing: 6) {
-                        Text("Pages")
-                            .font(.caption2)
-                            .tracking(0.5)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.secondary)
-                        HStack {
-                                    Button {
-                                        insertPageIndex = min(viewModel.currentPageIndex + 1, viewModel.pageCount)
-                                        isShowingInsertPageSheet = true
-                                    } label: {
-                                        toolbarButtonContent("Add") {
-                                            Image(systemName: "doc.badge.plus")
-                                                .fontWeight(.semibold)
-                                }
-                                .foregroundStyle(Color.accentColor)
-                                .padding(toolbarButtonPadding)
-                                .background(Color.secondary.opacity(0.1), in: .rect(cornerRadius: 8))
-                            }
-                            .buttonStyle(.plain)
-
-                            Button {
-                                isShowingRemovePageAlert = true
-                            } label: {
-                                toolbarButtonContent("Remove") {
-                                    Image(systemName: "doc")
-                                        .fontWeight(.semibold)
-                                }
-                                .foregroundStyle(viewModel.pageCount > 1 ? Color.red : Color.secondary)
-                                .padding(toolbarButtonPadding)
-                                .background(Color.secondary.opacity(0.1), in: .rect(cornerRadius: 8))
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(viewModel.pageCount <= 1)
-                            
-                            Button {
-                                viewModel.displaySettings.isThumbnailOverlayVisible.toggle()
-                            } label: {
-                                toolbarButtonContent("Preview") {
-                                    Image(systemName: viewModel.displaySettings.isThumbnailOverlayVisible ? "inset.filled.bottomthird.rectangle.portrait" : "rectangle.portrait")
-                                        .fontWeight(.semibold)
-                                }
-                                .foregroundStyle(Color.accentColor)
-                                .padding(toolbarButtonPadding)
-                                .background(viewModel.displaySettings.isThumbnailOverlayVisible ? Color.accentColor.opacity(0.3) : Color.secondary.opacity(0.1), in: .rect(cornerRadius: 8))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }//: HSTACK
-
-            }//: SCROLL
-
-            if viewModel.displaySettings.toolOptionsPresentation == .subToolbar {
-                Group {
-                    if showsSelectEditToolbar {
-                        selectEditToolbar
-                    } else if isActiveAnnotationTool(viewModel.activeTool) {
-                        activeToolSubToolbar
-                    } else {
-                        subtoolbarPlaceholder
-                    }
-                }
-            } else if showsSelectEditToolbar {
-                selectEditToolbar
-                    .transition(.move(edge: .top).combined(with: .opacity))
-            }
-        }//: VSTACK
-        .animation(.easeInOut(duration: 0.2), value: showsSelectEditToolbar)
-        .animation(.easeInOut(duration: 0.2), value: viewModel.activeTool)
-        .animation(.easeInOut(duration: 0.2), value: viewModel.selectedOverlayKind)
-        .contentBackgroundModifier()
-    }
-
-    private func isActiveAnnotationTool(_ tool: EditorTool) -> Bool {
-        switch tool {
-        case .draw, .erase, .text, .shape: return true
-        default: return false
-        }
-    }
-
-    private func handleDrawToolTap() {
-        viewModel.setTool(.draw)
-    }
-
-    private func handleEraseToolTap() {
-        viewModel.setTool(.erase)
-    }
-
-    private func handleTextToolTap() {
-        viewModel.setTool(.text)
-    }
-
-    private func handleShapeToolTap() {
-        viewModel.setTool(.shape)
-    }
-
-    @ViewBuilder
-    private var drawToolbarSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Draw")
-                .font(.caption2)
-                .tracking(0.5)
-                .fontWeight(.semibold)
-                .foregroundStyle(.secondary)
-            if viewModel.displaySettings.toolOptionsPresentation == .longPressPopover {
-                drawToolChrome
-                    .contentShape(Rectangle())
-                    .gesture(
-                        ExclusiveGesture(
-                            LongPressGesture(minimumDuration: 0.5).onEnded { _ in
-                                if !viewModel.isDrawingMode { viewModel.setTool(.draw) }
-                                showDrawOptions = true
-                            },
-                            TapGesture().onEnded { viewModel.setTool(.draw) }
-                        )
-                    )
-                    .popover(isPresented: $showDrawOptions, arrowEdge: .top) {
-                        DrawToolOptionsView(
-                            inkColor: Binding(
-                                get: { Color(viewModel.drawingSettings.inkColor) },
-                                set: { viewModel.drawingSettings.inkColor = UIColor($0) }
-                            ),
-                            inkLineWidth: $viewModel.drawingSettings.lineWidth,
-                            lineWidthInputStyle: viewModel.lineWidthControls.inputStyle,
-                            lineWidthStep: viewModel.lineWidthControls.step,
-                            lineWidthMax: viewModel.lineWidthControls.max
-                        )
-                    }
-            } else {
-                drawToolChrome
-                    .contentShape(Rectangle())
-                    .gesture(TapGesture().onEnded { handleDrawToolTap() })
-            }
-        }
-    }
-
-    private var drawToolChrome: some View {
-        toolbarButtonContent("Draw") {
-            Image(systemName: "pencil.and.scribble")
-                .symbolVariant(viewModel.isDrawingMode && !viewModel.isEraserMode ? .fill : .none)
-                .fontWeight(.semibold)
-        }
-        .foregroundStyle(Color.accentColor)
-        .padding(toolbarButtonPadding)
-        .background(
-            viewModel.isDrawingMode && !viewModel.isEraserMode
-                ? Color.accentColor.opacity(0.3)
-                : Color.secondary.opacity(0.1),
-            in: .rect(cornerRadius: 8)
-        )
-    }
-
-    @ViewBuilder
-    private var eraseToolbarSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Erase")
-                .font(.caption2)
-                .tracking(0.5)
-                .fontWeight(.semibold)
-                .foregroundStyle(.secondary)
-            if viewModel.displaySettings.toolOptionsPresentation == .longPressPopover {
-                eraseToolChrome
-                    .contentShape(Rectangle())
-                    .gesture(
-                        ExclusiveGesture(
-                            LongPressGesture(minimumDuration: 0.5).onEnded { _ in
-                                viewModel.setTool(.erase)
-                                showEraserOptions = true
-                            },
-                            TapGesture().onEnded { viewModel.setTool(.erase) }
-                        )
-                    )
-                    .popover(isPresented: $showEraserOptions, arrowEdge: .top) {
-                        EraserToolOptionsView(eraserRadius: $viewModel.drawingSettings.eraserRadius)
-                    }
-            } else {
-                eraseToolChrome
-                    .contentShape(Rectangle())
-                    .gesture(TapGesture().onEnded { handleEraseToolTap() })
-            }
-        }
-    }
-
-    private var eraseToolChrome: some View {
-        toolbarButtonContent("Erase") {
-            Image(systemName: "eraser")
-                .symbolVariant(viewModel.isEraserMode ? .fill : .none)
-                .fontWeight(.semibold)
-        }
-        .foregroundStyle(Color.accentColor)
-        .padding(toolbarButtonPadding)
-        .background(
-            viewModel.isEraserMode
-                ? Color.accentColor.opacity(0.3)
-                : Color.secondary.opacity(0.1),
-            in: .rect(cornerRadius: 8)
-        )
-    }
-
-    @ViewBuilder
-    private var textToolbarSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Text")
-                .font(.caption2)
-                .tracking(0.5)
-                .fontWeight(.semibold)
-                .foregroundStyle(.secondary)
-            if viewModel.displaySettings.toolOptionsPresentation == .longPressPopover {
-                textToolChrome
-                    .contentShape(Rectangle())
-                    .gesture(
-                        ExclusiveGesture(
-                            LongPressGesture(minimumDuration: 0.5).onEnded { _ in
-                                if !viewModel.isTextMode { viewModel.setTool(.text) }
-                                showTextOptions = true
-                            },
-                            TapGesture().onEnded { viewModel.setTool(.text) }
-                        )
-                    )
-                    .popover(isPresented: $showTextOptions, arrowEdge: .top) {
-                        TextToolOptionsView(
-                            textColor: Binding(
-                                get: { Color(viewModel.textSettings.textColor) },
-                                set: { viewModel.textSettings.textColor = UIColor($0) }
-                            ),
-                            backgroundColor: Binding(
-                                get: { Color(viewModel.textSettings.backgroundColor) },
-                                set: { viewModel.textSettings.backgroundColor = UIColor($0) }
-                            ),
-                            fontSize: $viewModel.textSettings.fontSize,
-                            isBold: $viewModel.textSettings.isBold,
-                            textAlignment: $viewModel.textSettings.textAlignment,
-                            verticalAlignment: $viewModel.textSettings.verticalAlignment,
-                            borderWidth: $viewModel.textSettings.borderWidth,
-                            borderColor: Binding(
-                                get: { Color(viewModel.textSettings.borderColor) },
-                                set: { viewModel.textSettings.borderColor = UIColor($0) }
-                            ),
-                            lineWidthInputStyle: viewModel.lineWidthControls.inputStyle,
-                            lineWidthStep: viewModel.lineWidthControls.step,
-                            lineWidthMax: viewModel.lineWidthControls.max
-                        )
-                    }
-            } else {
-                textToolChrome
-                    .contentShape(Rectangle())
-                    .gesture(TapGesture().onEnded { handleTextToolTap() })
-            }
-        }
-    }
-
-    private var textToolChrome: some View {
-        toolbarButtonContent("Text") {
-            Image(systemName: "character.cursor.ibeam")
-                .symbolVariant(viewModel.isTextMode ? .fill : .none)
-                .fontWeight(.semibold)
-        }
-        .foregroundStyle(Color.accentColor)
-        .padding(toolbarButtonPadding)
-        .background(viewModel.isTextMode ? Color.accentColor.opacity(0.3) : Color.secondary.opacity(0.1), in: .rect(cornerRadius: 8))
-    }
-
-    @ViewBuilder
-    private var shapeToolSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Shape")
-                .font(.caption2).tracking(0.5).fontWeight(.semibold).foregroundStyle(.secondary)
-            if viewModel.displaySettings.toolOptionsPresentation == .longPressPopover {
-                shapeToolChrome
-                    .contentShape(Rectangle())
-                    .gesture(
-                        ExclusiveGesture(
-                            LongPressGesture(minimumDuration: 0.5).onEnded { _ in
-                                if !viewModel.isShapeMode { viewModel.setTool(.shape) }
-                                showShapeOptions = true
-                            },
-                            TapGesture().onEnded { viewModel.setTool(.shape) }
-                        )
-                    )
-                    .popover(isPresented: $showShapeOptions, arrowEdge: .top) {
-                        ShapeToolOptionsView(
-                            shapeKind: $viewModel.shapeSettings.kind,
-                            strokeColor: Binding(
-                                get: { Color(viewModel.shapeSettings.strokeColor) },
-                                set: { viewModel.shapeSettings.strokeColor = UIColor($0) }
-                            ),
-                            lineWidth: $viewModel.shapeSettings.lineWidth,
-                            lineWidthInputStyle: viewModel.lineWidthControls.inputStyle,
-                            lineWidthStep: viewModel.lineWidthControls.step,
-                            lineWidthMax: viewModel.lineWidthControls.max
-                        )
-                    }
-            } else {
-                shapeToolChrome
-                    .contentShape(Rectangle())
-                    .gesture(TapGesture().onEnded { handleShapeToolTap() })
-            }
-        }
-    }
-
-    private var shapeToolChrome: some View {
-        toolbarButtonContent("Shape") {
-            Image(systemName: iconName(for: viewModel.shapeSettings.kind))
-                .symbolVariant(viewModel.isShapeMode ? .fill : .none)
-                .fontWeight(.semibold)
-        }
-        .foregroundStyle(Color.accentColor)
-        .padding(toolbarButtonPadding)
-        .background(viewModel.isShapeMode ? Color.accentColor.opacity(0.3) : Color.secondary.opacity(0.1), in: .rect(cornerRadius: 8))
-    }
-
-    private var subtoolbarPlaceholder: some View {
-        Color.secondary.opacity(0.08)
-            .frame(maxWidth: .infinity)
-            .frame(height: selectEditToolbarChipSize.height + 12)
-            .clipShape(.rect(cornerRadius: 10))
-    }
-
-    @ViewBuilder
-    private var activeToolSubToolbar: some View {
-        HStack(alignment: .center, spacing: 8) {
-            switch viewModel.activeTool {
-            case .draw:
-                activeDrawSubtools
-            case .erase:
-                activeEraserSubtools
-            case .text:
-                activeTextSubtoolsForDrawingDefaults
-            case .shape:
-                activeShapeSubtoolsForDrawingDefaults
-            default:
-                EmptyView()
-            }
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .background(Color.secondary.opacity(0.08), in: .rect(cornerRadius: 10))
-    }
-
-    @ViewBuilder
-    private var activeDrawSubtools: some View {
-        ToolbarSubtoolsScrollRow {
-            HStack(spacing: 6) {
-                Image(systemName: "pencil.tip")
-                    .fontWeight(.semibold)
-                    .foregroundStyle(Color(viewModel.drawingSettings.inkColor))
-                ColorPicker("", selection: Binding(
-                    get: { Color(viewModel.drawingSettings.inkColor) },
-                    set: { viewModel.drawingSettings.inkColor = UIColor($0) }
-                ))
-                .labelsHidden()
-            }
-            .padding(.horizontal, 8)
-            .frame(height: selectEditToolbarChipSize.height)
-            .background(toolbarChipBackground())
-            .accessibilityLabel("Draw color")
-            Group {
-                if viewModel.lineWidthControls.inputStyle == .presetButtons {
-                    Menu {
-                        MenuScrollableActions {
-                            Button("1pt") { viewModel.drawingSettings.lineWidth = 1 }
-                            Button("3pt") { viewModel.drawingSettings.lineWidth = 3 }
-                            Button("6pt") { viewModel.drawingSettings.lineWidth = 6 }
-                        }
-                    } label: {
-                        activeDrawLineWidthChipLabel
-                    }
-                } else {
-                    Button {
-                        showActiveDrawLineWidthPopover = true
-                    } label: {
-                        activeDrawLineWidthChipLabel
-                    }
-                    .buttonStyle(.plain)
-                    .popover(isPresented: $showActiveDrawLineWidthPopover, arrowEdge: .top) {
-                        ToolbarLineWidthStepperPanel(
-                            width: $viewModel.drawingSettings.lineWidth,
-                            step: viewModel.lineWidthControls.step,
-                            max: viewModel.lineWidthControls.max,
-                            allowsZero: false,
-                            title: "Line width"
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var activeDrawLineWidthChipLabel: some View {
-        selectEditToolbarChip("Line width") {
-            Image(systemName: "lineweight").fontWeight(.semibold)
-            Text(
-                LineWidthFormatting.shapeStrokeLabel(
-                    viewModel.drawingSettings.lineWidth,
-                    style: viewModel.lineWidthControls.inputStyle,
-                    step: viewModel.lineWidthControls.step
-                )
-            )
-            .fontWeight(.semibold)
-        }
-        .foregroundStyle(Color.accentColor)
-    }
-
-    @ViewBuilder
-    private var activeEraserSubtools: some View {
-        ToolbarSubtoolsScrollRow {
-            Menu {
-                MenuScrollableActions {
-                    Button("6pt") { viewModel.drawingSettings.eraserRadius = 6 }
-                    Button("9pt") { viewModel.drawingSettings.eraserRadius = 9 }
-                    Button("13pt") { viewModel.drawingSettings.eraserRadius = 13 }
-                    Button("18pt") { viewModel.drawingSettings.eraserRadius = 18 }
-                    Button("24pt") { viewModel.drawingSettings.eraserRadius = 24 }
-                }
-            } label: {
-                selectEditToolbarChip("Eraser size") {
-                    Image(systemName: "circle.dotted").fontWeight(.semibold)
-                    Text("\(Int(viewModel.drawingSettings.eraserRadius))pt")
-                        .font(.caption2)
-                        .fontWeight(.semibold)
-                }
-                .foregroundStyle(Color.accentColor)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var activeTextSubtoolsForDrawingDefaults: some View {
-        ToolbarSubtoolsScrollRow {
-            // Font
-            textToolbarFontSizeControl
-
-            HStack(spacing: 6) {
-                Image(systemName: "textformat")
-                    .fontWeight(.semibold)
-                    .foregroundStyle(Color(viewModel.textSettings.textColor))
-                ColorPicker("", selection: Binding(
-                    get: { Color(viewModel.textSettings.textColor) },
-                    set: { viewModel.textSettings.textColor = UIColor($0) }
-                ))
-                .labelsHidden()
-            }
-            .padding(.horizontal, 8)
-            .frame(height: selectEditToolbarChipSize.height)
-            .background(toolbarChipBackground())
-            .accessibilityLabel("Text color")
-
-            Button { viewModel.textSettings.isBold.toggle() } label: {
-                selectEditToolbarChip("Bold", isActive: viewModel.textSettings.isBold) {
-                    Image(systemName: "bold").fontWeight(.semibold)
-                }
-                .foregroundStyle(Color.accentColor)
-            }
-            .buttonStyle(.plain)
-
-            // Box
-            HStack(spacing: 6) {
-                ZStack {
-                    Image(systemName: "rectangle")
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.secondary)
-                    Image(systemName: "rectangle.fill")
-                        .fontWeight(.semibold)
-                        .foregroundStyle(Color(viewModel.textSettings.backgroundColor))
-                }
-                ColorPicker("", selection: Binding(
-                    get: { Color(viewModel.textSettings.backgroundColor) },
-                    set: { viewModel.textSettings.backgroundColor = UIColor($0) }
-                ), supportsOpacity: true)
-                .labelsHidden()
-            }
-            .padding(.horizontal, 8)
-            .frame(height: selectEditToolbarChipSize.height)
-            .background(toolbarChipBackground())
-            .accessibilityLabel("Background color")
-
-            Button {
-                showActiveTextBorderWidthPopover = true
-            } label: {
-                activeDefaultTextBoxBorderWidthChipLabel
-            }
-            .buttonStyle(.plain)
-            .popover(isPresented: $showActiveTextBorderWidthPopover, arrowEdge: .top) {
-                ToolbarBorderWidthColorPanel(
-                    width: Binding(
-                        get: { viewModel.textSettings.borderWidth },
-                        set: { v in
-                            viewModel.textSettings.borderWidth = v
-                            viewModel.commitSelectedTextBoxBorderWidth(v)
-                        }
-                    ),
-                    color: Binding(
-                        get: { Color(viewModel.textSettings.borderColor) },
-                        set: { v in
-                            let c = UIColor(v)
-                            viewModel.textSettings.borderColor = c
-                            viewModel.commitSelectedTextBoxBorderColor(c)
-                        }
-                    ),
-                    style: viewModel.lineWidthControls.inputStyle,
-                    step: viewModel.lineWidthControls.step,
-                    max: viewModel.lineWidthControls.max,
-                    title: "Text box border"
-                )
-            }
-
-            Menu {
-                MenuScrollableActions {
-                    Button {
-                        viewModel.textSettings.textAlignment = .left
-                    } label: {
-                        Label("Leading", systemImage: "text.alignleft")
-                    }
-                    Button {
-                        viewModel.textSettings.textAlignment = .center
-                    } label: {
-                        Label("Center", systemImage: "text.aligncenter")
-                    }
-                    Button {
-                        viewModel.textSettings.textAlignment = .right
-                    } label: {
-                        Label("Trailing", systemImage: "text.alignright")
-                    }
-                }
-            } label: {
-                selectEditToolbarChip("Text alignment") {
-                    Image(systemName: alignmentIcon(for: viewModel.textSettings.textAlignment))
-                        .fontWeight(.semibold)
-                }
-                .foregroundStyle(Color.accentColor)
-            }
-
-            Menu {
-                MenuScrollableActions {
-                    Button {
-                        viewModel.textSettings.verticalAlignment = .top
-                    } label: {
-                        Label("Top", systemImage: "arrow.up.to.line")
-                    }
-                    Button {
-                        viewModel.textSettings.verticalAlignment = .middle
-                    } label: {
-                        Label("Middle", systemImage: "arrow.up.and.down")
-                    }
-                    Button {
-                        viewModel.textSettings.verticalAlignment = .bottom
-                    } label: {
-                        Label("Bottom", systemImage: "arrow.down.to.line")
-                    }
-                }
-            } label: {
-                selectEditToolbarChip("Vertical alignment") {
-                    Image(systemName: verticalAlignmentIcon(for: viewModel.textSettings.verticalAlignment))
-                        .fontWeight(.semibold)
-                }
-                .foregroundStyle(Color.accentColor)
-            }
-
-            deleteSelectionButton
-        }
-    }
-
-    @ViewBuilder
-    private var activeDefaultTextBoxBorderWidthChipLabel: some View {
-        selectEditToolbarChip("Text box border width", isActive: viewModel.textSettings.borderWidth > 0) {
-            Image(systemName: "square.dashed").fontWeight(.semibold)
-            Text(defaultTextBoxBorderWidthLabel)
-                .fontWeight(.semibold)
-        }
-        .foregroundStyle(defaultTextBoxBorderControlColor)
-    }
-
-    private var defaultTextBoxBorderWidthLabel: String {
-        guard viewModel.textSettings.borderWidth > 0 else { return "No" }
-        return LineWidthFormatting.toolbarPointsLabel(
-            viewModel.textSettings.borderWidth,
-            style: viewModel.lineWidthControls.inputStyle,
-            step: viewModel.lineWidthControls.step
-        )
-    }
-
-    private var defaultTextBoxBorderControlColor: Color {
-        viewModel.textSettings.borderWidth > 0 ? Color(viewModel.textSettings.borderColor) : Color.accentColor
-    }
-
-    @ViewBuilder
-    private var activeShapeSubtoolsForDrawingDefaults: some View {
-        ToolbarSubtoolsScrollRow {
-            Button { viewModel.shapeSettings.kind = .rectangle } label: {
-                selectEditToolbarChip("Rectangle", isActive: viewModel.shapeSettings.kind == .rectangle) {
-                    Image(systemName: iconName(for: .rectangle)).fontWeight(.semibold)
-                }
-                .foregroundStyle(Color.accentColor)
-            }
-            .buttonStyle(.plain)
-
-            Button { viewModel.shapeSettings.kind = .circle } label: {
-                selectEditToolbarChip("Circle", isActive: viewModel.shapeSettings.kind == .circle) {
-                    Image(systemName: iconName(for: .circle)).fontWeight(.semibold)
-                }
-                .foregroundStyle(Color.accentColor)
-            }
-            .buttonStyle(.plain)
-
-            Button { viewModel.shapeSettings.kind = .triangle } label: {
-                selectEditToolbarChip("Triangle", isActive: viewModel.shapeSettings.kind == .triangle) {
-                    Image(systemName: iconName(for: .triangle)).fontWeight(.semibold)
-                }
-                .foregroundStyle(Color.accentColor)
-            }
-            .buttonStyle(.plain)
-
-            Button { viewModel.shapeSettings.kind = .line } label: {
-                selectEditToolbarChip("Line", isActive: viewModel.shapeSettings.kind == .line) {
-                    Image(systemName: iconName(for: .line)).fontWeight(.semibold)
-                }
-                .foregroundStyle(Color.accentColor)
-            }
-            .buttonStyle(.plain)
-
-            Button { viewModel.shapeSettings.kind = .arrow } label: {
-                selectEditToolbarChip("Arrow", isActive: viewModel.shapeSettings.kind == .arrow) {
-                    Image(systemName: iconName(for: .arrow)).fontWeight(.semibold)
-                }
-                .foregroundStyle(Color.accentColor)
-            }
-            .buttonStyle(.plain)
-
-            Button { viewModel.shapeSettings.kind = .doubleArrow } label: {
-                selectEditToolbarChip("2-Arrow", isActive: viewModel.shapeSettings.kind == .doubleArrow) {
-                    Image(systemName: iconName(for: .doubleArrow)).fontWeight(.semibold)
-                }
-                .foregroundStyle(Color.accentColor)
-            }
-            .buttonStyle(.plain)
-
-            HStack(spacing: 6) {
-                Image(systemName: fillIconName(for: viewModel.shapeSettings.kind))
-                    .fontWeight(.semibold)
-                    .foregroundStyle(Color(viewModel.shapeSettings.strokeColor))
-                ColorPicker("", selection: Binding(
-                    get: { Color(viewModel.shapeSettings.strokeColor) },
-                    set: { viewModel.shapeSettings.strokeColor = UIColor($0) }
-                ))
-                .labelsHidden()
-            }
-            .padding(.horizontal, 8)
-            .frame(height: selectEditToolbarChipSize.height)
-            .background(toolbarChipBackground())
-            .accessibilityLabel("Stroke color")
-            Group {
-                if viewModel.lineWidthControls.inputStyle == .presetButtons {
-                    Menu {
-                        MenuScrollableActions {
-                            Button("Thin (1pt)") { viewModel.shapeSettings.lineWidth = 1 }
-                            Button("Medium (2pt)") { viewModel.shapeSettings.lineWidth = 2 }
-                            Button("Thick (4pt)") { viewModel.shapeSettings.lineWidth = 4 }
-                            Button("Heavy (6pt)") { viewModel.shapeSettings.lineWidth = 6 }
-                        }
-                    } label: {
-                        selectShapeLineWidthChipLabel
-                    }
-                } else {
-                    Button {
-                        showActiveShapeLineWidthPopover = true
-                    } label: {
-                        selectShapeLineWidthChipLabel
-                    }
-                    .buttonStyle(.plain)
-                    .popover(isPresented: $showActiveShapeLineWidthPopover, arrowEdge: .top) {
-                        ToolbarLineWidthStepperPanel(
-                            width: $viewModel.shapeSettings.lineWidth,
-                            step: viewModel.lineWidthControls.step,
-                            max: viewModel.lineWidthControls.max,
-                            allowsZero: false,
-                            title: "Stroke width"
-                        )
-                    }
-                }
-            }
-
-            deleteSelectionButton
-        }
-    }
-
-    @ViewBuilder
-    private var selectToolSection: some View {
-        VStack(spacing: 6) {
-            Text("Select")
-                .font(.caption2)
-                .tracking(0.5)
-                .fontWeight(.semibold)
-                .foregroundStyle(.secondary)
-            HStack(alignment: .center, spacing: 8) {
-                Button {
-                    viewModel.setTool(.select)
-                } label: {
-                    toolbarButtonContent("Select") {
-                        Image(systemName: "cursorarrow.rays")
-                            .symbolVariant(viewModel.activeTool == .select ? .fill : .none)
-                            .fontWeight(.semibold)
-                    }
-                    .foregroundStyle(Color.accentColor)
-                    .padding(toolbarButtonPadding)
-                    .background(viewModel.activeTool == .select ? Color.accentColor.opacity(0.3) : Color.secondary.opacity(0.1), in: .rect(cornerRadius: 8))
-                }
-                .buttonStyle(.plain)
-            }
-        }
-    }
-
-    private var showsSelectEditToolbar: Bool {
-        viewModel.activeTool == .select
-            && (viewModel.selectedOverlayKind != nil || viewModel.hasSelectedInkAnnotation || viewModel.hasSelectedOverlayObject)
-    }
-
-    @ViewBuilder
-    private var selectEditToolbar: some View {
-        HStack(alignment: .center, spacing: 8) {
-            if viewModel.selectedOverlayKind == .textBox {
-                selectTextBoxSubtools
-            }
-
-            if viewModel.selectedOverlayKind == .shape {
-                selectShapeSubtools
-            }
-
-            if viewModel.selectedOverlayKind == .image {
-                selectImageSubtools
-            }
-
-            if viewModel.hasSelectedInkAnnotation && viewModel.selectedOverlayKind == nil {
-                deleteSelectionButton
-            }
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .background(Color.secondary.opacity(0.08), in: .rect(cornerRadius: 10))
-    }
-
-    private var deleteSelectionButton: some View {
-        Button {
-            viewModel.deleteSelectedSelection()
-        } label: {
-            selectEditToolbarChip("Delete") {
-                Image(systemName: "trash")
-                    .fontWeight(.semibold)
-            }
-            .foregroundStyle(.red)
-        }
-        .buttonStyle(.plain)
-    }
-
-    @ViewBuilder
-    private var selectImageBorderWidthChipLabel: some View {
-        selectEditToolbarChip("Image border width", isActive: viewModel.imageSettings.borderWidth > 0) {
-            Image(systemName: "square.dashed").fontWeight(.semibold)
-            Text(
-                LineWidthFormatting.toolbarPointsLabel(
-                    viewModel.imageSettings.borderWidth,
-                    style: viewModel.lineWidthControls.inputStyle,
-                    step: viewModel.lineWidthControls.step
-                )
-            )
-            .fontWeight(.semibold)
-        }
-        .foregroundStyle(Color.accentColor)
-    }
-
-    @ViewBuilder
-    private var selectImageSubtools: some View {
-        ToolbarSubtoolsScrollRow {
-            ColorPicker("", selection: Binding(
-                get: { Color(viewModel.imageSettings.borderColor) },
-                set: { viewModel.commitImageBorderColor(UIColor($0)) }
-            ))
-            .labelsHidden()
-            .frame(width: selectEditToolbarChipSize.width, height: selectEditToolbarChipSize.height)
-            .background(toolbarChipBackground())
-
-            Group {
-                if viewModel.lineWidthControls.inputStyle == .presetButtons {
-                    Menu {
-                        MenuScrollableActions {
-                            Button("None") { viewModel.commitImageBorderWidth(0) }
-                            Button("Thin (1pt)") { viewModel.commitImageBorderWidth(1) }
-                            Button("Medium (2pt)") { viewModel.commitImageBorderWidth(2) }
-                            Button("Thick (4pt)") { viewModel.commitImageBorderWidth(4) }
-                            Button("Heavy (6pt)") { viewModel.commitImageBorderWidth(6) }
-                        }
-                    } label: {
-                        selectImageBorderWidthChipLabel
-                    }
-                } else {
-                    Button {
-                        showSelectImageBorderWidthPopover = true
-                    } label: {
-                        selectImageBorderWidthChipLabel
-                    }
-                    .buttonStyle(.plain)
-                    .popover(isPresented: $showSelectImageBorderWidthPopover, arrowEdge: .top) {
-                        ToolbarLineWidthStepperPanel(
-                            width: Binding(
-                                get: { viewModel.imageSettings.borderWidth },
-                                set: { viewModel.commitImageBorderWidth($0) }
-                            ),
-                            step: viewModel.lineWidthControls.step,
-                            max: viewModel.lineWidthControls.max,
-                            allowsZero: true,
-                            title: "Border width"
-                        )
-                    }
-                }
-            }
-
-            deleteSelectionButton
-        }
-    }
-    
-    @ViewBuilder
-    private var selectTextBoxBorderWidthChipLabel: some View {
-        selectEditToolbarChip("Text box border width", isActive: viewModel.selectedTextBoxBorder.width > 0) {
-            Image(systemName: "square.dashed").fontWeight(.semibold)
-            Text(selectedTextBoxBorderWidthLabel)
-            .fontWeight(.semibold)
-        }
-        .foregroundStyle(selectedTextBoxBorderControlColor)
-    }
-
-    @ViewBuilder
-    private var selectTextBoxSubtools: some View {
-        ToolbarSubtoolsScrollRow {
-            ColorPicker(selection: Binding(
-                get: { Color(viewModel.textSettings.textColor) },
-                set: { viewModel.textSettings.textColor = UIColor($0) }
-            )) {
-                selectEditToolbarChip("Text color") {
-                    Image(systemName: "textformat")
-                        .fontWeight(.semibold)
-                        .foregroundStyle(Color(viewModel.textSettings.textColor))
-                }
-                .foregroundStyle(Color.accentColor)
-            }
-
-            ColorPicker(selection: Binding(
-                get: { Color(viewModel.textSettings.backgroundColor) },
-                set: { viewModel.textSettings.backgroundColor = UIColor($0) }
-            ), supportsOpacity: true) {
-                selectEditToolbarChip("Background color") {
-                    ZStack {
-                        Image(systemName: "rectangle")
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.secondary)
-                        Image(systemName: "rectangle.fill")
-                            .fontWeight(.semibold)
-                            .foregroundStyle(Color(viewModel.textSettings.backgroundColor))
-                    }
-                }
-                .foregroundStyle(Color.accentColor)
-            }
-
-            textToolbarFontSizeControl
-
-            Button { viewModel.textSettings.isBold.toggle() } label: {
-                selectEditToolbarChip("Bold", isActive: viewModel.textSettings.isBold) {
-                    Image(systemName: "bold").fontWeight(.semibold)
-                }
-                .foregroundStyle(Color.accentColor)
-            }
-            .buttonStyle(.plain)
-            Menu {
-                MenuScrollableActions {
-                    Button {
-                        viewModel.textSettings.textAlignment = .left
-                    } label: {
-                        Label("Leading", systemImage: "text.alignleft")
-                    }
-                    Button {
-                        viewModel.textSettings.textAlignment = .center
-                    } label: {
-                        Label("Center", systemImage: "text.aligncenter")
-                    }
-                    Button {
-                        viewModel.textSettings.textAlignment = .right
-                    } label: {
-                        Label("Trailing", systemImage: "text.alignright")
-                    }
-                }
-            } label: {
-                selectEditToolbarChip("Text alignment") {
-                    Image(systemName: alignmentIcon(for: viewModel.textSettings.textAlignment))
-                        .fontWeight(.semibold)
-                }
-                .foregroundStyle(Color.accentColor)
-            }
-            Menu {
-                MenuScrollableActions {
-                    Button {
-                        viewModel.textSettings.verticalAlignment = .top
-                    } label: {
-                        Label("Top", systemImage: "arrow.up.to.line")
-                    }
-                    Button {
-                        viewModel.textSettings.verticalAlignment = .middle
-                    } label: {
-                        Label("Middle", systemImage: "arrow.up.and.down")
-                    }
-                    Button {
-                        viewModel.textSettings.verticalAlignment = .bottom
-                    } label: {
-                        Label("Bottom", systemImage: "arrow.down.to.line")
-                    }
-                }
-            } label: {
-                selectEditToolbarChip("Vertical alignment") {
-                    Image(systemName: verticalAlignmentIcon(for: viewModel.textSettings.verticalAlignment))
-                        .fontWeight(.semibold)
-                }
-                .foregroundStyle(Color.accentColor)
-            }
-
-            Button {
-                showSelectTextBorderWidthPopover = true
-            } label: {
-                selectTextBoxBorderWidthChipLabel
-            }
-            .buttonStyle(.plain)
-            .popover(isPresented: $showSelectTextBorderWidthPopover, arrowEdge: .top) {
-                ToolbarBorderWidthColorPanel(
-                    width: Binding(
-                        get: { viewModel.selectedTextBoxBorder.width },
-                        set: { viewModel.commitSelectedTextBoxBorderWidth($0) }
-                    ),
-                    color: Binding(
-                        get: { Color(viewModel.selectedTextBoxBorder.color) },
-                        set: { viewModel.commitSelectedTextBoxBorderColor(UIColor($0)) }
-                    ),
-                    style: viewModel.lineWidthControls.inputStyle,
-                    step: viewModel.lineWidthControls.step,
-                    max: viewModel.lineWidthControls.max,
-                    title: "Text box border"
-                )
-            }
-
-            deleteSelectionButton
-        }
-    }
-
-    private func alignmentIcon(for alignment: NSTextAlignment) -> String {
-        switch alignment {
-        case .center:  return "text.aligncenter"
-        case .right:   return "text.alignright"
-        default:       return "text.alignleft"
-        }
-    }
-
-    private func verticalAlignmentIcon(for alignment: TextVerticalAlignment) -> String {
-        switch alignment {
-        case .top:    return "arrow.up.to.line"
-        case .middle: return "arrow.up.and.down"
-        case .bottom: return "arrow.down.to.line"
-        }
-    }
-
-    private var selectedTextBoxBorderWidthLabel: String {
-        guard viewModel.selectedTextBoxBorder.width > 0 else { return "No" }
-        return LineWidthFormatting.toolbarPointsLabel(
-            viewModel.selectedTextBoxBorder.width,
-            style: viewModel.lineWidthControls.inputStyle,
-            step: viewModel.lineWidthControls.step
-        )
-    }
-
-    private var selectedTextBoxBorderControlColor: Color {
-        viewModel.selectedTextBoxBorder.width > 0 ? Color(viewModel.selectedTextBoxBorder.color) : Color.accentColor
-    }
-
-    @ViewBuilder
-    private var selectShapeLineWidthChipLabel: some View {
-        selectEditToolbarChip("Stroke width") {
-            Image(systemName: "lineweight").fontWeight(.semibold)
-            Text(
-                LineWidthFormatting.shapeStrokeLabel(
-                    viewModel.shapeSettings.lineWidth,
-                    style: viewModel.lineWidthControls.inputStyle,
-                    step: viewModel.lineWidthControls.step
-                )
-            )
-            .fontWeight(.semibold)
-        }
-        .foregroundStyle(Color.accentColor)
-    }
-
-    @ViewBuilder
-    private var selectShapeSubtools: some View {
-        ToolbarSubtoolsScrollRow {
-            Menu {
-                shapeKindMenuActions
-            } label: {
-                selectEditToolbarChip("Shape kind") {
-                    Image(systemName: iconName(for: viewModel.shapeSettings.kind))
-                        .fontWeight(.semibold)
-                }
-                .foregroundStyle(Color.accentColor)
-            }
-
-            ColorPicker("", selection: Binding(
-                get: { Color(viewModel.shapeSettings.strokeColor) },
-                set: { viewModel.shapeSettings.strokeColor = UIColor($0) }
-            ))
-            .labelsHidden()
-            .frame(width: selectEditToolbarChipSize.width, height: selectEditToolbarChipSize.height)
-            .background(toolbarChipBackground())
-            Group {
-                if viewModel.lineWidthControls.inputStyle == .presetButtons {
-                    Menu {
-                        MenuScrollableActions {
-                            Button("Thin (1pt)") { viewModel.shapeSettings.lineWidth = 1 }
-                            Button("Medium (2pt)") { viewModel.shapeSettings.lineWidth = 2 }
-                            Button("Thick (4pt)") { viewModel.shapeSettings.lineWidth = 4 }
-                            Button("Heavy (6pt)") { viewModel.shapeSettings.lineWidth = 6 }
-                        }
-                    } label: {
-                        selectShapeLineWidthChipLabel
-                    }
-                } else {
-                    Button {
-                        showSelectShapeLineWidthPopover = true
-                    } label: {
-                        selectShapeLineWidthChipLabel
-                    }
-                    .buttonStyle(.plain)
-                    .popover(isPresented: $showSelectShapeLineWidthPopover, arrowEdge: .top) {
-                        ToolbarLineWidthStepperPanel(
-                            width: $viewModel.shapeSettings.lineWidth,
-                            step: viewModel.lineWidthControls.step,
-                            max: viewModel.lineWidthControls.max,
-                            allowsZero: false,
-                            title: "Stroke width"
-                        )
-                    }
-                }
-            }
-
-            deleteSelectionButton
-        }
-    }
-
-    @ViewBuilder
-    private var shapeKindMenuActions: some View {
-        Button {
-            viewModel.shapeSettings.kind = .circle
-        } label: {
-            Label("Circle", systemImage: iconName(for: .circle))
-        }
-        Button {
-            viewModel.shapeSettings.kind = .rectangle
-        } label: {
-            Label("Rectangle", systemImage: iconName(for: .rectangle))
-        }
-        Button {
-            viewModel.shapeSettings.kind = .triangle
-        } label: {
-            Label("Triangle", systemImage: iconName(for: .triangle))
-        }
-        Button {
-            viewModel.shapeSettings.kind = .line
-        } label: {
-            Label("Line", systemImage: iconName(for: .line))
-        }
-        Button {
-            viewModel.shapeSettings.kind = .arrow
-        } label: {
-            Label("Arrow", systemImage: iconName(for: .arrow))
-        }
-        Button {
-            viewModel.shapeSettings.kind = .doubleArrow
-        } label: {
-            Label("Double Arrow", systemImage: iconName(for: .doubleArrow))
-        }
-    }
-
-    private var textToolbarFontSizeControl: some View {
-        Button {
-            showTextToolbarFontSizePopover = true
-        } label: {
-            selectEditToolbarChip("Font size") {
-                Image(systemName: "textformat.size").fontWeight(.semibold)
-                Text("\(Int(viewModel.textSettings.fontSize))pt")
-                    .font(.caption2)
-                    .fontWeight(.semibold)
-            }
-            .foregroundStyle(Color.accentColor)
-        }
-        .buttonStyle(.plain)
-        .popover(isPresented: $showTextToolbarFontSizePopover, arrowEdge: .top) {
-            ToolbarFontSizeStepperPanel(fontSize: $viewModel.textSettings.fontSize)
-        }
-    }
-
-    private func toolbarChip<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        VStack(spacing: 4) {
-            content()
-        }
-        .frame(width: toolbarChipSize.width, height: toolbarChipSize.height, alignment: .top)
-        .multilineTextAlignment(.center)
-        .lineLimit(1)
-        .minimumScaleFactor(0.75)
-    }
-
-    private func selectEditToolbarChip<Content: View>(
-        _ accessibilityLabel: String,
-        isActive: Bool = false,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(spacing: 1) {
-            content()
-        }
-        .frame(width: selectEditToolbarChipSize.width, height: selectEditToolbarChipSize.height, alignment: .center)
-        .multilineTextAlignment(.center)
-        .lineLimit(1)
-        .minimumScaleFactor(0.75)
-        .background(toolbarChipBackground(isActive: isActive))
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(accessibilityLabel))
-    }
-
-    private func toolbarButtonContent<Icon: View>(_ title: String, @ViewBuilder icon: () -> Icon) -> some View {
-        VStack(spacing: viewModel.displaySettings.toolbarCompact ? 0 : 4) {
-            icon()
-            if !viewModel.displaySettings.toolbarCompact {
-                Text(title)
-                    .fontWeight(.semibold)
-            }
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(title))
-    }
-
-    private func toolbarChipBackground(isActive: Bool = false) -> some View {
-        Color.clear
-            .background(isActive ? Color.accentColor.opacity(0.3) : Color.secondary.opacity(0.1), in: .rect(cornerRadius: 8))
-    }
-
     private func insertPageLabel(for index: Int) -> String {
         let pageNumber = index + 1
         if index == 0 {
@@ -1689,28 +585,6 @@ struct PDFFormEditorView: View {
         case .line: return "line.diagonal"
         case .arrow: return "arrow.up.right"
         case .doubleArrow: return "arrow.left.and.right"
-        }
-    }
-
-    private func fillIconName(for kind: OverlayShapeKind) -> String {
-        switch kind {
-        case .circle: return "circle.fill"
-        case .rectangle: return "rectangle.fill"
-        case .triangle: return "triangle.fill"
-        case .line: return "line.diagonal"
-        case .arrow: return "arrow.up.right"
-        case .doubleArrow: return "arrow.left.and.right"
-        }
-    }
-
-    private func labelText(for kind: OverlayShapeKind) -> String {
-        switch kind {
-        case .circle: return "Circle"
-        case .rectangle: return "Rect"
-        case .triangle: return "Tri"
-        case .line: return "Line"
-        case .arrow: return "Arrow"
-        case .doubleArrow: return "2-Arrow"
         }
     }
 }

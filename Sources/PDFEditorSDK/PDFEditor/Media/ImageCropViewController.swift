@@ -73,8 +73,7 @@ final class ImageCropViewController: UIViewController {
     // MARK: - Setup
 
     private func setupNavBar() {
-        view.backgroundColor = .black
-        overrideUserInterfaceStyle = .dark
+        view.backgroundColor = .systemBackground
         title = "Crop"
         navigationItem.leftBarButtonItem = UIBarButtonItem(
             title: "Cancel", style: .plain, target: self, action: #selector(cancelTapped)
@@ -136,9 +135,7 @@ final class ImageCropViewController: UIViewController {
 
         func iconButton(systemName: String, action: Selector) -> UIButton {
             let b = UIButton(type: .system)
-            let config = UIImage.SymbolConfiguration(pointSize: 22, weight: .regular)
-            b.setImage(UIImage(systemName: systemName, withConfiguration: config), for: .normal)
-            b.tintColor = .white
+            b.setImage(UIImage(systemName: systemName), for: .normal)
             b.addTarget(self, action: action, for: .touchUpInside)
             return b
         }
@@ -148,8 +145,6 @@ final class ImageCropViewController: UIViewController {
 
         let resetBtn = UIButton(type: .system)
         resetBtn.setTitle("Reset", for: .normal)
-        resetBtn.setTitleColor(.white, for: .normal)
-        resetBtn.titleLabel?.font = .systemFont(ofSize: 16, weight: .regular)
         resetBtn.addTarget(self, action: #selector(resetCrop), for: .touchUpInside)
 
         let stack = UIStackView(arrangedSubviews: [rotateLeft, resetBtn, rotateRight])
