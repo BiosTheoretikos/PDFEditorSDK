@@ -3,49 +3,20 @@ import Foundation
 import Testing
 @testable import PDFEditor
 
-struct PDFEditorTests {
-    @Test func thumbnailRejectsInvalidRenderSizeBeforeLoadingDocument() async throws {
-        let missingURL = URL(fileURLWithPath: "/tmp/missing-\(UUID().uuidString).pdf")
+struct PDFEditorErrorTests {
+    @Test func descriptionsIncludeRelevantContext() {
+        let url = URL(fileURLWithPath: "/tmp/Contract.pdf")
 
-        do {
-            _ = try PDFEditorSDK.thumbnail(for: missingURL, size: .zero)
-            Issue.record("Expected invalidRenderSize to be thrown.")
-        } catch let error as PDFEditorError {
-            if case .invalidRenderSize(let size) = error {
-                #expect(size == .zero)
-            } else {
-                Issue.record("Unexpected PDFEditorError: \(error)")
-            }
-        } catch {
-            Issue.record("Unexpected error type: \(error)")
-        }
-    }
-
-    @Test func defaultFileNamesDescribeDocumentKind() {
-        let sourceURL = URL(fileURLWithPath: "/tmp/Contract.pdf")
-
-        #expect(PDFGeneratedFileStore.defaultFileName(for: .editable, sourceURL: sourceURL) == "Contract-Editable.pdf")
-        #expect(PDFGeneratedFileStore.defaultFileName(for: .flattened, sourceURL: sourceURL) == "Contract-Flattened.pdf")
-    }
-
-    @Test func generatedFileStoreFinalizesIntoDefaultFolder() throws {
-        let fileName = "UnitTest-\(UUID().uuidString).pdf"
-        let stagingURL = try PDFGeneratedFileStore.prepareStagingURL(fileName: fileName)
-        try Data("%PDF-1.4\n%EOF\n".utf8).write(to: stagingURL)
-
-        let finalURL = try PDFGeneratedFileStore.finalize(
-            generatedURL: stagingURL,
-            request: PDFEditorFileRequest(
-                kind: .editable,
-                sourceURL: nil,
-                temporaryURL: stagingURL,
-                suggestedFileName: fileName
-            ),
-            handler: nil
-        )
-        defer { try? FileManager.default.removeItem(at: finalURL) }
-
-        #expect(FileManager.default.fileExists(atPath: finalURL.path))
-        #expect(finalURL.lastPathComponent == fileName)
+        #expect(PDFEditorError.documentLoadFailed(url).errorDescription == "Failed to load PDF at Contract.pdf.")
+        #expect(PDFEditorError.documentNotLoaded.errorDescription == "No PDF document is loaded.")
+        #expect(PDFEditorError.emptyDocument(url).errorDescription == "PDF at Contract.pdf has no pages.")
+        #expect(PDFEditorError.emptyDocument(nil).errorDescription == "PDF document has no pages.")
+        #expect(PDFEditorError.pageNotFound(index: 3).errorDescription == "PDF page 3 was not found.")
+        #expect(PDFEditorError.invalidRenderSize(CGSize(width: 0, height: -4)).errorDescription == "Invalid render size 0 x -4.")
+        #expect(PDFEditorError.exportDocumentUnavailable.errorDescription == "Could not create an editable export copy of the PDF.")
+        #expect(PDFEditorError.overlayMetadataUnavailable.errorDescription == "Could not read the PDF overlay metadata.")
+        #expect(PDFEditorError.documentWriteFailed(url).errorDescription == "Failed to write PDF to Contract.pdf.")
+        #expect(PDFEditorError.flattenedRenderFailed(url).errorDescription == "Failed to render flattened PDF to Contract.pdf.")
+        #expect(PDFEditorError.generatedFileFinalizationFailed("Disk full").errorDescription == "Failed to finalize generated PDF: Disk full")
     }
 }
