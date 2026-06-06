@@ -16,9 +16,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "DA748F1E2FD24B8800BF204E"
-               BuildableName = "PDFEditor.framework"
-               BlueprintName = "PDFEditor"
-               ReferencedContainer = "container:PDFEditor.xcodeproj">
+               BuildableName = "PDFEditorSDK.framework"
+               BlueprintName = "PDFEditorSDK"
+               ReferencedContainer = "container:PDFEditorSDK.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -36,9 +36,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "DA748F952FD258BE00BF204E"
-               BuildableName = "PDFEditorTests.xctest"
-               BlueprintName = "PDFEditorTests"
-               ReferencedContainer = "container:PDFEditor.xcodeproj">
+               BuildableName = "PDFEditorSDKTests.xctest"
+               BlueprintName = "PDFEditorSDKTests"
+               ReferencedContainer = "container:PDFEditorSDK.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
@@ -65,9 +65,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "DA748F1E2FD24B8800BF204E"
-            BuildableName = "PDFEditor.framework"
-            BlueprintName = "PDFEditor"
-            ReferencedContainer = "container:PDFEditor.xcodeproj">
+            BuildableName = "PDFEditorSDK.framework"
+            BlueprintName = "PDFEditorSDK"
+            ReferencedContainer = "container:PDFEditorSDK.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
    </ProfileAction>

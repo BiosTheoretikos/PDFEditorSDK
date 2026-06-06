@@ -9,7 +9,7 @@
 /* Begin PBXBuildFile section */
 		DA748F472FD24C3F00BF204E /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = DA748F2D2FD24C3F00BF204E /* README.md */; };
 		DA748F482FD24C3F00BF204E /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = DA748F2B2FD24C3F00BF204E /* LICENSE */; };
-		DA748F9A2FD258BE00BF204E /* PDFEditor.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DA748F1F2FD24B8800BF204E /* PDFEditor.framework */; platformFilter = ios; };
+		DA748F9A2FD258BE00BF204E /* PDFEditorSDK.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DA748F1F2FD24B8800BF204E /* PDFEditorSDK.framework */; platformFilter = ios; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -23,11 +23,11 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		DA748F1F2FD24B8800BF204E /* PDFEditor.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = PDFEditor.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		DA748F1F2FD24B8800BF204E /* PDFEditorSDK.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = PDFEditorSDK.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		DA748F2B2FD24C3F00BF204E /* LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; path = LICENSE; sourceTree = "<group>"; };
 		DA748F2D2FD24C3F00BF204E /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
-		DA748F962FD258BE00BF204E /* PDFEditorTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PDFEditorTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		DA748FB12FD258F900BF204E /* PDFEditorUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PDFEditorUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		DA748F962FD258BE00BF204E /* PDFEditorSDKTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PDFEditorSDKTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		DA748FB12FD258F900BF204E /* PDFEditorSDKUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PDFEditorSDKUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -60,7 +60,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				DA748F9A2FD258BE00BF204E /* PDFEditor.framework in Frameworks */,
+				DA748F9A2FD258BE00BF204E /* PDFEditorSDK.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -89,9 +89,9 @@
 		DA748F202FD24B8800BF204E /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				DA748F1F2FD24B8800BF204E /* PDFEditor.framework */,
-				DA748F962FD258BE00BF204E /* PDFEditorTests.xctest */,
-				DA748FB12FD258F900BF204E /* PDFEditorUITests.xctest */,
+				DA748F1F2FD24B8800BF204E /* PDFEditorSDK.framework */,
+				DA748F962FD258BE00BF204E /* PDFEditorSDKTests.xctest */,
+				DA748FB12FD258F900BF204E /* PDFEditorSDKUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -109,9 +109,9 @@
 /* End PBXHeadersBuildPhase section */
 
 /* Begin PBXNativeTarget section */
-		DA748F1E2FD24B8800BF204E /* PDFEditor */ = {
+		DA748F1E2FD24B8800BF204E /* PDFEditorSDK */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = DA748F262FD24B8800BF204E /* Build configuration list for PBXNativeTarget "PDFEditor" */;
+			buildConfigurationList = DA748F262FD24B8800BF204E /* Build configuration list for PBXNativeTarget "PDFEditorSDK" */;
 			buildPhases = (
 				DA748F1A2FD24B8800BF204E /* Headers */,
 				DA748F1B2FD24B8800BF204E /* Sources */,
@@ -125,16 +125,16 @@
 			fileSystemSynchronizedGroups = (
 				DA748F462FD24C3F00BF204E /* Sources */,
 			);
-			name = PDFEditor;
+			name = PDFEditorSDK;
 			packageProductDependencies = (
 			);
 			productName = PDFEditorSDK;
-			productReference = DA748F1F2FD24B8800BF204E /* PDFEditor.framework */;
+			productReference = DA748F1F2FD24B8800BF204E /* PDFEditorSDK.framework */;
 			productType = "com.apple.product-type.framework";
 		};
-		DA748F952FD258BE00BF204E /* PDFEditorTests */ = {
+		DA748F952FD258BE00BF204E /* PDFEditorSDKTests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = DA748F9D2FD258BE00BF204E /* Build configuration list for PBXNativeTarget "PDFEditorTests" */;
+			buildConfigurationList = DA748F9D2FD258BE00BF204E /* Build configuration list for PBXNativeTarget "PDFEditorSDKTests" */;
 			buildPhases = (
 				DA748F922FD258BE00BF204E /* Sources */,
 				DA748F932FD258BE00BF204E /* Frameworks */,
@@ -148,16 +148,16 @@
 			fileSystemSynchronizedGroups = (
 				DA748F972FD258BE00BF204E /* PDFEditorTests */,
 			);
-			name = PDFEditorTests;
+			name = PDFEditorSDKTests;
 			packageProductDependencies = (
 			);
 			productName = PDFEditorTests;
-			productReference = DA748F962FD258BE00BF204E /* PDFEditorTests.xctest */;
+			productReference = DA748F962FD258BE00BF204E /* PDFEditorSDKTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
-		DA748FB02FD258F900BF204E /* PDFEditorUITests */ = {
+		DA748FB02FD258F900BF204E /* PDFEditorSDKUITests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = DA748FB72FD258F900BF204E /* Build configuration list for PBXNativeTarget "PDFEditorUITests" */;
+			buildConfigurationList = DA748FB72FD258F900BF204E /* Build configuration list for PBXNativeTarget "PDFEditorSDKUITests" */;
 			buildPhases = (
 				DA748FAD2FD258F900BF204E /* Sources */,
 				DA748FAE2FD258F900BF204E /* Frameworks */,
@@ -170,11 +170,11 @@
 			fileSystemSynchronizedGroups = (
 				DA748FB22FD258F900BF204E /* PDFEditorUITests */,
 			);
-			name = PDFEditorUITests;
+			name = PDFEditorSDKUITests;
 			packageProductDependencies = (
 			);
 			productName = PDFEditorUITests;
-			productReference = DA748FB12FD258F900BF204E /* PDFEditorUITests.xctest */;
+			productReference = DA748FB12FD258F900BF204E /* PDFEditorSDKUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 /* End PBXNativeTarget section */
@@ -198,7 +198,7 @@
 					};
 				};
 			};
-			buildConfigurationList = DA748F192FD24B8800BF204E /* Build configuration list for PBXProject "PDFEditor" */;
+			buildConfigurationList = DA748F192FD24B8800BF204E /* Build configuration list for PBXProject "PDFEditorSDK" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -212,9 +212,9 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				DA748F1E2FD24B8800BF204E /* PDFEditor */,
-				DA748F952FD258BE00BF204E /* PDFEditorTests */,
-				DA748FB02FD258F900BF204E /* PDFEditorUITests */,
+				DA748F1E2FD24B8800BF204E /* PDFEditorSDK */,
+				DA748F952FD258BE00BF204E /* PDFEditorSDKTests */,
+				DA748FB02FD258F900BF204E /* PDFEditorSDKUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -273,7 +273,7 @@
 		DA748F9C2FD258BE00BF204E /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			platformFilter = ios;
-			target = DA748F1E2FD24B8800BF204E /* PDFEditor */;
+			target = DA748F1E2FD24B8800BF204E /* PDFEditorSDK */;
 			targetProxy = DA748F9B2FD258BE00BF204E /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
@@ -592,7 +592,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		DA748F192FD24B8800BF204E /* Build configuration list for PBXProject "PDFEditor" */ = {
+		DA748F192FD24B8800BF204E /* Build configuration list for PBXProject "PDFEditorSDK" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				DA748F242FD24B8800BF204E /* Debug */,
@@ -601,7 +601,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		DA748F262FD24B8800BF204E /* Build configuration list for PBXNativeTarget "PDFEditor" */ = {
+		DA748F262FD24B8800BF204E /* Build configuration list for PBXNativeTarget "PDFEditorSDK" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				DA748F272FD24B8800BF204E /* Debug */,
@@ -610,7 +610,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		DA748F9D2FD258BE00BF204E /* Build configuration list for PBXNativeTarget "PDFEditorTests" */ = {
+		DA748F9D2FD258BE00BF204E /* Build configuration list for PBXNativeTarget "PDFEditorSDKTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				DA748F9E2FD258BE00BF204E /* Debug */,
@@ -619,7 +619,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		DA748FB72FD258F900BF204E /* Build configuration list for PBXNativeTarget "PDFEditorUITests" */ = {
+		DA748FB72FD258F900BF204E /* Build configuration list for PBXNativeTarget "PDFEditorSDKUITests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				DA748FB82FD258F900BF204E /* Debug */,

@@ -41,7 +41,7 @@ public typealias PDFEditorFileHandler = (PDFEditorFileRequest) throws -> URL
 
 // MARK: - Static utilities
 
-public enum PDFEditorSDK {
+public enum PDFEditor {
 
     /// Generates a thumbnail image for one page of an editable PDF saved by this SDK.
     ///
