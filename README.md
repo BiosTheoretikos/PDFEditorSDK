@@ -90,6 +90,31 @@ struct MyEditorScreen: View {
 }
 ```
 
+### Document-based apps
+
+For a SwiftUI document-based app, use `PDFEditorDocument` as the `ReferenceFileDocument`
+type and pass the document from `DocumentGroup` directly to `PDFEditorView`.
+
+```swift
+import PDFEditorSDK
+import SwiftUI
+
+@main
+struct MyPDFApp: App {
+    var body: some Scene {
+        DocumentGroup(newDocument: PDFEditorDocument()) { file in
+            NavigationStack {
+                PDFEditorView(document: file.document)
+            }
+        }
+    }
+}
+```
+
+The editor opens an in-memory working copy. When the user taps the editor's Save
+button, the editable PDF is written back into the `PDFEditorDocument`; SwiftUI's
+document scene remains responsible for the actual file write.
+
 ### Custom save destinations
 
 ```swift

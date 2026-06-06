@@ -95,6 +95,7 @@ final class PDFFormViewModel {
     var showFormWidgetImageSourceDialog = false
     var pendingFormWidgetPageIndex: Int?
     var pendingFormWidgetAnnotation: PDFAnnotation?
+    let referenceDocument: PDFEditorDocument?
     let editableSaveHandler: PDFEditorFileHandler?
     let flattenedExportHandler: PDFEditorFileHandler?
     let shouldHighlightFormField: ((PDFFormFieldInfo) -> Bool)?
@@ -105,6 +106,7 @@ final class PDFFormViewModel {
         flattenedExportHandler: PDFEditorFileHandler? = nil,
         shouldHighlightFormField: ((PDFFormFieldInfo) -> Bool)? = nil
     ) {
+        self.referenceDocument = nil
         self.editableSaveHandler = editableSaveHandler
         self.flattenedExportHandler = flattenedExportHandler
         self.shouldHighlightFormField = shouldHighlightFormField
@@ -121,6 +123,30 @@ final class PDFFormViewModel {
         self.lineWidthControls = LineWidthControlSettings(preferences: prefs)
 
         _ = loadPDF(from: documentURL)
+    }
+
+    init(
+        document: PDFEditorDocument,
+        flattenedExportHandler: PDFEditorFileHandler? = nil,
+        shouldHighlightFormField: ((PDFFormFieldInfo) -> Bool)? = nil
+    ) {
+        self.referenceDocument = document
+        self.editableSaveHandler = nil
+        self.flattenedExportHandler = flattenedExportHandler
+        self.shouldHighlightFormField = shouldHighlightFormField
+
+        let prefs = EditorPreferences.load()
+        self.preferences = prefs
+
+        self.drawingSettings = DrawingAnnotationSettings(preferences: prefs)
+        self.textSettings = TextAnnotationSettings(preferences: prefs)
+        self.shapeSettings = ShapeAnnotationSettings(preferences: prefs)
+        self.imageSettings = ImageAnnotationSettings(preferences: prefs)
+        self.pencilInput = PencilInputSettings(preferences: prefs)
+        self.displaySettings = EditorDisplaySettings(preferences: prefs)
+        self.lineWidthControls = LineWidthControlSettings(preferences: prefs)
+
+        _ = loadPDF(from: document)
     }
 
     var selectedOverlayKind: SelectedOverlayKind?

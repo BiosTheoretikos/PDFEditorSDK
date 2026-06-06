@@ -11,11 +11,27 @@ import UIKit
 extension PDFFormViewModel {
     @discardableResult
     func loadPDF(from url: URL) -> Bool {
-        currentDocumentURL = url
         guard let document = PDFDocument(url: url) else {
             openStatus = "Failed to open PDF"
             return false
         }
+        return loadPDF(document, sourceURL: url)
+    }
+
+    @discardableResult
+    func loadPDF(from document: PDFEditorDocument) -> Bool {
+        do {
+            let pdfDocument = try document.makePDFDocumentCopy()
+            return loadPDF(pdfDocument, sourceURL: nil)
+        } catch {
+            openStatus = error.localizedDescription
+            return false
+        }
+    }
+
+    @discardableResult
+    private func loadPDF(_ document: PDFDocument, sourceURL: URL?) -> Bool {
+        currentDocumentURL = sourceURL
         pendingOverlayMetadata = extractRealOverlayMetadata(from: document)
         pdfDocument = document
         didLoadOverlayMetadata = false
