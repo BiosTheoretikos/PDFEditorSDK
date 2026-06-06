@@ -216,6 +216,148 @@ struct PDFOverlayMetadataTests {
         #expect(flipped.end == CGPoint(x: 12, y: 98))
     }
 
+    @Test func aspectFitRectCentersImagesInsideTargetRect() throws {
+        let imageBase64 = try PDFEditorTestSupport.makePNGBase64(
+            size: CGSize(width: 40, height: 20)
+        )
+        let imageData = try #require(Data(base64Encoded: imageBase64))
+        let image = try #require(UIImage(data: imageData)?.cgImage)
+
+        let rect = PDFOverlayRenderer.aspectFitRect(
+            for: image,
+            in: CGRect(x: 10, y: 20, width: 100, height: 100)
+        )
+
+        #expect(abs(rect.minX - 10) < 0.001)
+        #expect(abs(rect.minY - 45) < 0.001)
+        #expect(abs(rect.width - 100) < 0.001)
+        #expect(abs(rect.height - 50) < 0.001)
+    }
+
+    @Test
+    @MainActor
+    func writerSkipsMetadataThatCannotBecomePDFAnnotations() throws {
+        let document = try PDFEditorTestSupport.makePDFDocument()
+        let metadata = OverlayDocumentMetadata(
+            textBoxes: [
+                OverlayTextBoxMeta(
+                    id: UUID(),
+                    pageIndex: 99,
+                    rect: RectCodable(CGRect(x: 0, y: 0, width: 10, height: 10)),
+                    text: "Missing page",
+                    background: RGBAColor(.systemYellow),
+                    fontSize: nil,
+                    isBold: nil,
+                    textColor: nil,
+                    textAlignment: nil,
+                    verticalAlignment: nil,
+                    autoResize: nil,
+                    borderWidth: nil,
+                    borderColor: nil
+                )
+            ],
+            images: [
+                OverlayImageMeta(
+                    id: UUID(),
+                    pageIndex: 0,
+                    rect: RectCodable(CGRect(x: 0, y: 0, width: 10, height: 10)),
+                    imageBase64: "not-base64",
+                    borderWidth: nil,
+                    borderColor: nil
+                )
+            ],
+            shapes: [
+                OverlayShapeMeta(
+                    id: UUID(),
+                    pageIndex: 0,
+                    rect: RectCodable(CGRect(x: 0, y: 0, width: 10, height: 10)),
+                    kindRaw: "unsupported",
+                    strokeColor: RGBAColor(.black),
+                    lineWidth: 1,
+                    lineFlippedH: nil,
+                    lineFlippedV: nil
+                )
+            ]
+        )
+
+        let added = PDFOverlayAnnotationWriter.write(metadata: metadata, to: document)
+        let restored = PDFOverlayRenderer.readOverlayMetadata(from: document)
+
+        #expect(added.isEmpty)
+        #expect(restored.textBoxes.isEmpty)
+        #expect(restored.images.isEmpty)
+        #expect(restored.shapes.isEmpty)
+    }
+
+    @Test
+    @MainActor
+    func realOverlayAnnotationsTakePrecedenceOverLegacyPayloads() throws {
+        let document = try PDFEditorTestSupport.makePDFDocument()
+        let shapeID = UUID()
+        let realMetadata = OverlayDocumentMetadata(shapes: [
+            OverlayShapeMeta(
+                id: shapeID,
+                pageIndex: 0,
+                rect: RectCodable(CGRect(x: 10, y: 10, width: 50, height: 50)),
+                kindRaw: OverlayShapeKind.rectangle.rawValue,
+                strokeColor: RGBAColor(.systemBlue),
+                lineWidth: 2,
+                lineFlippedH: nil,
+                lineFlippedV: nil
+            )
+        ])
+        let legacyMetadata = OverlayDocumentMetadata(textBoxes: [
+            OverlayTextBoxMeta(
+                id: UUID(),
+                pageIndex: 0,
+                rect: RectCodable(CGRect(x: 10, y: 10, width: 50, height: 30)),
+                text: "Legacy",
+                background: RGBAColor(.systemYellow),
+                fontSize: nil,
+                isBold: nil,
+                textColor: nil,
+                textAlignment: nil,
+                verticalAlignment: nil,
+                autoResize: nil,
+                borderWidth: nil,
+                borderColor: nil
+            )
+        ])
+
+        _ = PDFOverlayAnnotationWriter.write(metadata: realMetadata, to: document)
+        let encoded = try JSONEncoder().encode(legacyMetadata).base64EncodedString()
+        let legacyAnnotation = PDFAnnotation(bounds: .zero, forType: .text, withProperties: nil)
+        legacyAnnotation.contents = PDFOverlayRenderer.overlayMetadataPrefix + encoded
+        document.page(at: 0)?.addAnnotation(legacyAnnotation)
+
+        let restored = PDFOverlayRenderer.readOverlayMetadata(from: document)
+
+        #expect(restored.textBoxes.isEmpty)
+        #expect(restored.shapes.count == 1)
+        #expect(restored.shapes.first?.id == shapeID)
+    }
+
+    @Test
+    @MainActor
+    func documentInfoMapsPDFAttributesToRendererInfoDictionary() throws {
+        let document = try PDFEditorTestSupport.makePDFDocument()
+        document.documentAttributes = [
+            PDFDocumentAttribute.titleAttribute: "Title",
+            PDFDocumentAttribute.authorAttribute: "Author",
+            PDFDocumentAttribute.subjectAttribute: "Subject",
+            PDFDocumentAttribute.creatorAttribute: "Creator",
+            PDFDocumentAttribute.keywordsAttribute: ["one", "two"]
+        ]
+
+        let info = PDFOverlayRenderer.pdfDocumentInfo(from: document)
+
+        #expect(info[kCGPDFContextTitle as String] as? String == "Title")
+        #expect(info[kCGPDFContextAuthor as String] as? String == "Author")
+        #expect(info[kCGPDFContextSubject as String] as? String == "Subject")
+        #expect(info[kCGPDFContextCreator as String] as? String == "Creator")
+        #expect(info[kCGPDFContextKeywords as String] as? [String] == ["one", "two"])
+    }
+
     private func addLegacyPart(
         _ partContents: String,
         part: Int,

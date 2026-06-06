@@ -7,6 +7,12 @@ import UIKit
 
 enum PDFEditorTestSupport {
     static let defaultPageSize = CGSize(width: 200, height: 240)
+    private static let editorPreferencesLock = NSLock()
+    private static let editorPreferenceKeys = [
+        "com.pdfeditor.editorPreferences",
+        "com.pdfeditor.editorPreferences.pdf",
+        "com.pdfeditor.editorPreferences.pdfOnlyMigrated"
+    ]
 
     static func makePDFData(
         pageCount: Int = 1,
@@ -86,5 +92,31 @@ enum PDFEditorTestSupport {
         } catch {
             Issue.record("Unexpected error type: \(error)")
         }
+    }
+
+    static func withPreservedEditorPreferences<T>(_ body: () throws -> T) rethrows -> T {
+        editorPreferencesLock.lock()
+        defer { editorPreferencesLock.unlock() }
+
+        let defaults = UserDefaults.standard
+        let savedValues = editorPreferenceKeys.reduce(into: [String: Any]()) { values, key in
+            values[key] = defaults.object(forKey: key)
+        }
+
+        for key in editorPreferenceKeys {
+            defaults.removeObject(forKey: key)
+        }
+
+        defer {
+            for key in editorPreferenceKeys {
+                if let value = savedValues[key] {
+                    defaults.set(value, forKey: key)
+                } else {
+                    defaults.removeObject(forKey: key)
+                }
+            }
+        }
+
+        return try body()
     }
 }
